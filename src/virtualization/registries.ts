@@ -104,3 +104,34 @@ export class ProgramRegistry extends RegistryBase<
   }
   static getInstance = createInstantiator<WebGL2RenderingContext>()(this)
 }
+
+/** caches `WebGLProgram` based on vertex's and fragment's `TemplateStringArray` */
+class GLRegistry extends RegistryBase<
+  WebGL2RenderingContext,
+  {
+    program: WebGLProgram | undefined
+  }
+> {
+  register(gl: WebGL2RenderingContext) {
+    return super._register(gl, () => {
+      initializeGl(gl)
+      return {
+        program: undefined,
+      }
+    })
+  }
+}
+
+const initializeGl = (gl: WebGL2RenderingContext) => {
+  const resizeObserver = new ResizeObserver(() => {
+    if (gl.canvas instanceof OffscreenCanvas) {
+      throw 'can not autosize OffscreenCanvas'
+    }
+    gl.canvas.width = gl.canvas.clientWidth
+    gl.canvas.height = gl.canvas.clientHeight
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
+  })
+  resizeObserver.observe(gl.canvas as HTMLCanvasElement)
+}
+
+export const glRegistry = new GLRegistry()

@@ -3,28 +3,28 @@ import { BufferRegistry, TextureRegistry } from './registries'
 import { TextureSlots } from './texture-slots'
 
 export class VirtualProgram {
-  private attributes: Map<string, Float32Array>
-  private uniforms: Registry<string, Float32Array | number>
+  private attributes: Map<number, Float32Array>
+  private uniforms: Registry<WebGLUniformLocation, Float32Array | number>
   private buffers: BufferRegistry
   private textures: TextureRegistry
   private textureSlots: TextureSlots
 
   constructor(gl: WebGL2RenderingContext) {
-    this.attributes = new Map<string, Float32Array>()
-    this.uniforms = new Registry<string, Float32Array | number>()
+    this.attributes = new Map<number, Float32Array>()
+    this.uniforms = new Registry<WebGLUniformLocation, Float32Array | number>()
     this.buffers = BufferRegistry.getInstance(gl)
     this.textures = TextureRegistry.getInstance(gl)
     this.textureSlots = TextureSlots.create(gl)
   }
 
-  checkAttribute(name: string, value: Float32Array) {
+  checkAttribute(name: number, value: Float32Array) {
     return this.attributes.get(name) === value
   }
-  dirtyAttribute(name: string) {
-    const value = this.attributes.get(name)
+  dirtyAttribute(location: number) {
+    const value = this.attributes.get(location)
     if (value) this.buffers.dirty(value)
   }
-  setAttribute(name: string, value: Float32Array) {
+  setAttribute(name: number, value: Float32Array) {
     this.attributes.set(name, value)
   }
 
@@ -35,8 +35,11 @@ export class VirtualProgram {
     this.buffers.dirty(value)
   }
 
-  registerUniform(name: string, value: () => Float32Array | number) {
-    return this.uniforms.register(name, value)
+  registerUniform(
+    location: WebGLUniformLocation,
+    value: () => Float32Array | number
+  ) {
+    return this.uniforms.register(location, value)
   }
   updateUniform(name: string, value: Float32Array | number) {
     this.uniforms.update(name, value)

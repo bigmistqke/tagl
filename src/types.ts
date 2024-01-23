@@ -23,7 +23,7 @@ export type Token = {
   initialize: (
     program: WebGLProgram,
     virtualProgram: VirtualProgram,
-    name: string
+    location: WebGLUniformLocation | number
   ) => void
   getLocation: (
     gl: WebGL2RenderingContext,
@@ -34,7 +34,6 @@ export type Token = {
   update: (
     gl: WebGL2RenderingContext,
     virtualProgram: VirtualProgram,
-    name: string,
     location: WebGLUniformLocation | number
   ) => void
 }

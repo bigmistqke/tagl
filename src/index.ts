@@ -4,6 +4,7 @@ import { dataTypeToSize, uniformDataTypeToFunctionName } from './utils'
 import {
   ProgramRegistry,
   ShaderLocationRegistry,
+  glRegistry,
   shaderCompilationRegistry,
 } from './virtualization/registries'
 import {
@@ -23,24 +24,32 @@ export const createUniform = (
   }
   const functionName = uniformDataTypeToFunctionName(type)
 
-  const onUpdates = new Set<() => void>()
+  const onUpdates: (() => void)[] = []
+  const virtualPrograms = new Set<VirtualProgram>()
 
   const token: Token = {
-    initialize: (program, virtualProgram, name) =>
-      onUpdates.add(() => {
-        virtualProgram.dirtyUniform(name)
+    initialize: (program, virtualProgram, location) => {
+      if (virtualPrograms.has(virtualProgram)) return
+      virtualPrograms.add(virtualProgram)
+      const uniform = virtualProgram.registerUniform(location, () => value)
+      onUpdates.push(() => {
+        uniform.dirty = true
         getStacks(program)?.forEach((stack) => stack.draw())
-      }),
+      })
+    },
     getLocation: (gl, program, name) => gl.getUniformLocation(program, name)!,
-    update: (gl, virtualProgram, name, location) => {
-      const uniform = virtualProgram.registerUniform(name, () => value)
+    update: (gl, virtualProgram, location) => {
+      const uniform = virtualProgram.registerUniform(location, () => value)
 
       if (uniform.value === value && !uniform.dirty) {
         DEBUG && console.info('early return uniform')
         return
       }
 
-      virtualProgram.updateUniform(name, value)
+      uniform.dirty = false
+      uniform.value = value
+
+      // virtualProgram.updateUniform(name, value)
 
       if (type.includes('mat')) {
         // @ts-expect-error
@@ -66,19 +75,26 @@ export const createAttribute = (
     onUpdates.forEach((update) => update())
   }
 
-  const onUpdates = new Set<() => void>()
+  const virtualPrograms = new Set<VirtualProgram>()
+  const onUpdates: (() => void)[] = []
+  const size = dataTypeToSize(type)
 
   const token: Token = {
-    initialize: (program, virtualProgram, name) => {
-      onUpdates.add(() => {
-        virtualProgram.dirtyAttribute(name)
+    initialize: (program, virtualProgram, location) => {
+      if (virtualPrograms.has(virtualProgram)) return
+      virtualPrograms.add(virtualProgram)
+      onUpdates.push(() => {
+        virtualProgram.dirtyAttribute(location as number)
         getStacks(program)?.forEach((stack) => stack.draw())
       })
     },
     getLocation: (gl, program, name) => gl.getAttribLocation(program, name)!,
-    update: (gl, virtualProgram, name, location) => {
+    update: (gl, virtualProgram, location) => {
       const buffer = virtualProgram.registerBuffer(value)
-      if (buffer.dirty || !virtualProgram.checkAttribute(name, value)) {
+      if (
+        buffer.dirty ||
+        !virtualProgram.checkAttribute(location as number, value)
+      ) {
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer.value)
         if (buffer.dirty) {
           gl.bufferData(gl.ARRAY_BUFFER, value, gl.STATIC_DRAW)
@@ -88,16 +104,9 @@ export const createAttribute = (
         DEBUG && console.info('early return attribute')
         return
       }
-      virtualProgram.setAttribute(name, value)
+      virtualProgram.setAttribute(location as number, value)
 
-      gl.vertexAttribPointer(
-        location as number,
-        dataTypeToSize(type),
-        gl.FLOAT,
-        false,
-        0,
-        0
-      )
+      gl.vertexAttribPointer(location as number, size, gl.FLOAT, false, 0, 0)
       gl.enableVertexAttribArray(location as number)
     },
     compile: (name) => `in ${type} ${name};`,
@@ -115,6 +124,14 @@ export const glsl = function (
     tokens
   ).value
 
+  const getLocations = (program: WebGLProgram) => {
+    const locations = locationsRegistry.get(program)?.value
+    if (!locations) {
+      throw 'no locations'
+    }
+    return locations
+  }
+
   return {
     compilation,
     template,
@@ -123,45 +140,26 @@ export const glsl = function (
       program: WebGLProgram,
       virtualProgram: VirtualProgram
     ) => {
-      tokens.forEach((token, index) => {
-        token.initialize(program, virtualProgram, names[index]!)
-      })
-      locationsRegistry.register(program, () =>
+      const locations = locationsRegistry.register(program, () =>
         tokens.map((token, index) =>
           token.getLocation(gl, program, names[index]!)
         )
-      )
+      ).value
+      for (let index = 0; index < tokens.length; index++) {
+        tokens[index]!.initialize(program, virtualProgram, locations[index]!)
+      }
     },
     update: (
       gl: WebGL2RenderingContext,
       program: WebGLProgram,
       virtualProgram: VirtualProgram
     ) => {
-      const locations = locationsRegistry.get(program)?.value
-      if (!locations) {
-        console.error('no locations')
-        return
+      const locations = getLocations(program)
+      for (let index = 0; index < tokens.length; index++) {
+        tokens[index]!.update(gl, virtualProgram, locations[index]!)
       }
-      tokens.forEach((token, index) =>
-        token.update(gl, virtualProgram, names[index]!, locations[index]!)
-      )
     },
   }
-}
-
-const gls = new WeakSet<WebGL2RenderingContext>()
-const initializeGl = (gl: WebGL2RenderingContext) => {
-  if (gls.has(gl)) return
-  gls.add(gl)
-  const resizeObserver = new ResizeObserver(() => {
-    if (gl.canvas instanceof OffscreenCanvas) {
-      throw 'can not autosize OffscreenCanvas'
-    }
-    gl.canvas.width = gl.canvas.clientWidth
-    gl.canvas.height = gl.canvas.clientHeight
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
-  })
-  resizeObserver.observe(gl.canvas as HTMLCanvasElement)
 }
 
 export const createProgram = ({
@@ -175,7 +173,8 @@ export const createProgram = ({
   fragment: ReturnType<typeof glsl>
   count: number
 }) => {
-  initializeGl(gl)
+  const gl_record = glRegistry.register(gl)
+
   const program = ProgramRegistry.getInstance(gl).register(
     vertex,
     fragment
@@ -189,7 +188,10 @@ export const createProgram = ({
 
   return {
     draw: () => {
-      gl.useProgram(program)
+      if (gl_record.value.program !== program) {
+        gl.useProgram(program)
+        gl_record.value.program = program
+      }
       vertex.update(gl, program, virtualProgram)
       fragment.update(gl, program, virtualProgram)
       gl.drawArrays(gl.TRIANGLES, 0, count)
@@ -217,7 +219,7 @@ export const createStack = (
         return
       }
       isPending = true
-      requestAnimationFrame(() => {
+      requestIdleCallback(() => {
         programs.forEach((program) => program.draw())
         isPending = false
       })

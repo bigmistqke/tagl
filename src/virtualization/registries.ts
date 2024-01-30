@@ -2,7 +2,7 @@ import zeptoid from 'zeptoid'
 
 import { glsl } from 'src'
 import { compile } from '../compilation'
-import { RegistryBase } from '../data-structures/Registry'
+import { RegistryBase } from '../data-structures/registry'
 import { Token } from '../types'
 import { createInstantiator, createWebGLProgram } from '../utils'
 import { createVirtualProgram } from './virtual-program'
@@ -13,15 +13,13 @@ export class BufferRegistry extends RegistryBase<Float32Array, WebGLBuffer> {
     super()
   }
   register(value: Float32Array) {
-    const record = super._register(value, () => {
+    return super._register(value, () => {
       const buffer = this.gl.createBuffer()
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer)
       this.gl.bufferData(this.gl.ARRAY_BUFFER, value, this.gl.STATIC_DRAW)
       if (!buffer) throw 'Unable to create texture'
       return buffer
     })
-
-    return record
   }
   static getInstance = createInstantiator<WebGL2RenderingContext>()(this)
 }
@@ -37,12 +35,13 @@ export class TextureRegistry extends RegistryBase<
   constructor(private gl: WebGL2RenderingContext) {
     super()
   }
+  createTexture() {
+    const texture = this.gl.createTexture()
+    if (!texture) throw 'Unable to create texture'
+    return { texture, dirty: true }
+  }
   register(value: any) {
-    return super._register(value, () => {
-      const texture = this.gl.createTexture()
-      if (!texture) throw 'Unable to create texture'
-      return { texture, dirty: true }
-    })
+    return super._register(value, this.createTexture)
   }
   static getInstance = createInstantiator<WebGL2RenderingContext>()(this)
 }

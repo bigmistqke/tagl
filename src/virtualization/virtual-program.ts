@@ -1,4 +1,4 @@
-import { Registry } from '../data-structures/Registry'
+import { Registry } from '../data-structures/registry'
 import { BufferRegistry, TextureRegistry } from './registries'
 import { TextureSlots } from './texture-slots'
 

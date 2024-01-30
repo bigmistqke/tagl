@@ -1,20 +1,10 @@
-import {
-  createAttribute,
-  createProgram,
-  createStack,
-  createUniform,
-  glsl,
-} from 'src'
+import { createAttribute, createGL, createUniform, glsl } from 'src'
 
 import { mat4 } from 'gl-matrix'
 
 const canvas = document.createElement('canvas')
 document.body.appendChild(canvas)
-const gl = canvas.getContext('webgl2')!
-
-gl.enable(gl.DEPTH_TEST)
-gl.depthFunc(gl.LEQUAL)
-gl.depthRange(0.2, 10)
+const gl = createGL(canvas)
 
 const [camera, setCamera] = createUniform(
   'mat4',
@@ -37,24 +27,27 @@ const [perspective, setPerspective] = createUniform(
   ) as Float32Array
 )
 
-const createPlane = ({
+const createMesh = ({
   color,
   vertices,
   position,
-  offset,
+  uv,
 }: {
   color: Float32Array
   vertices: Float32Array
   position: Float32Array
-  offset: Float32Array
+  uv: Float32Array
 }) => {
   const [u_color, setColor] = createUniform('vec3', color)
   const [a_vertices, setVertices] = createAttribute('vec3', vertices)
   const [u_position, setPosition] = createUniform('vec3', position)
+  const [u_uv, setUv] = createAttribute('vec2', uv)
 
   const vertex = glsl`#version 300 es
     precision highp float;
+    out vec2 uv;
     void main(void) {
+      uv = ${u_uv};
       gl_Position = ${camera} * ${perspective} * vec4(${a_vertices} * 0.1 + ${u_position}, 1);
       gl_PointSize = 5.;
     }`
@@ -62,53 +55,71 @@ const createPlane = ({
   const fragment = glsl`#version 300 es
     precision highp float;
     out vec4 color;
+    in vec2 uv;
     void main(void) {
-      color = vec4(${u_color}, 1.);
+      float radius = distance(uv, vec2(0.5, 0.5));
+      if(radius > 0.5){
+        discard;
+      }else{
+        color = vec4(${u_color}, 1.);
+      }
     }`
 
   return {
-    ...createProgram({ gl, vertex, fragment, count: 3 }),
+    ...gl.createProgram({ vertex, fragment, count: 6 }),
     setColor,
-    setVertices,
     setPosition,
-    offset,
+    position,
   }
 }
 
-const vertices = new Float32Array([
-  -0.5, -0.5, 0.0, 0.5, -0.5, 0.0, -0.5, 0.5, 0.0,
-])
+// prettier-ignore
+const plane = {
+  vertices: 
+    new Float32Array([
+    -0.5, -0.5, 0.0, 
+    0.5, -0.5, 0.0, 
+    -0.5, 0.5, 0.0,
 
-const planes = Array.from({ length: 7500 }).map(() => ({
-  ...createPlane({
+    0.5, 0.5, 0.0, 
+    0.5, -0.5, 0.0, 
+    -0.5, 0.5, 0.0,
+  ]),
+  uv: new Float32Array([
+    0, 0, 
+    1, 0, 
+    0, 1,
+
+    1, 1, 
+    1, 0, 
+    0, 1,
+  ])
+}
+
+const planes = Array.from({ length: 1000 }).map(() => ({
+  ...createMesh({
     color: new Float32Array([Math.random(), Math.random(), Math.random()]),
-    vertices,
-    offset: new Float32Array([Math.random() * 6, Math.random() * 6]),
     position: new Float32Array([0, 0, -2 + Math.random()]),
+    ...plane,
   }),
+  offset: new Float32Array([Math.random() * 6, Math.random() * 6]),
   timeOffset: Math.random(),
 }))
 
-createStack(...planes)
+gl.ctx.depthFunc(gl.ctx.LEQUAL)
+gl.ctx.depthRange(0.2, 10)
+gl.ctx.clearDepth(1.0)
 
-gl.depthFunc(gl.LEQUAL)
-gl.depthRange(0.2, 10)
-gl.clearDepth(1.0)
+gl.setStack(...planes)
+gl.requestRender()
 
-const loop = (now: number) => {
+gl.onLoop((now) => {
   for (let i = 0; i < planes.length; i++) {
     const plane = planes[i]!
-    plane.setPosition((value) => {
-      value[0] = plane.offset[0]! + Math.sin(plane.timeOffset + now / 1000)
-      value[1] = plane.offset[1]! + Math.cos(plane.timeOffset + now / 1000)
-      return value
-    })
-    plane.setColor((value) => {
-      value[1] = Math.sin(plane.timeOffset + now / 1000) / 2 + 0.5
-      return value
+    plane.setPosition((position) => {
+      position[0] = plane.offset[0]! + Math.sin(plane.timeOffset + now / 1000)
+      position[1] = plane.offset[1]! + Math.cos(plane.timeOffset + now / 1000)
+      return position
     })
   }
-
-  requestAnimationFrame(loop)
-}
-loop(performance.now())
+})

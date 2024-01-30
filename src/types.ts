@@ -1,8 +1,6 @@
-import {
-  BufferRegistry,
-  TextureRegistry,
-  UniformRegistry,
-} from './virtualization/registries'
+import { GL } from 'src'
+import { Registry } from './data-structures/registry'
+import { BufferRegistry, TextureRegistry } from './virtualization/registries'
 import { type TextureSlots } from './virtualization/texture-slots'
 import { VirtualProgram } from './virtualization/virtual-program'
 
@@ -21,18 +19,18 @@ export type AttributeTypes =
   | 'mat4'
 export type Token = {
   initialize: (
-    program: WebGLProgram,
+    gl: GL,
     virtualProgram: VirtualProgram,
     location: WebGLUniformLocation | number
   ) => void
   getLocation: (
-    gl: WebGL2RenderingContext,
+    gl: GL,
     program: WebGLProgram,
     name: string
   ) => WebGLUniformLocation
   compile: (name: string) => string | undefined
   update: (
-    gl: WebGL2RenderingContext,
+    gl: GL,
     virtualProgram: VirtualProgram,
     location: WebGLUniformLocation | number
   ) => void
@@ -43,7 +41,7 @@ export type Setter = (
 export type GLProgramMemory = {
   buffers: BufferRegistry
   attributes: Map<string, WebGLBuffer>
-  uniforms: UniformRegistry
+  uniforms: Registry<WebGLUniformLocation, Float32Array | number>
   textures: TextureRegistry
   textureslots: TextureSlots
 }

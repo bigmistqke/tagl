@@ -1,9 +1,9 @@
-import { Deque } from '../data-structures/Deque'
+import { DequeMap } from '../data-structures/deque-map'
 import { createInstantiator } from '../utils'
 
 export class TextureSlots {
   // deque managing texture-slots
-  textureSlots: Deque<WebGLTexture, number> = new Deque()
+  textureSlots: DequeMap<WebGLTexture, number> = new DequeMap()
   // texture-callbacks of current WebGLProgram's render-call.
   pendingTextureCallbacks = new Map<WebGLTexture, ((index: number) => void)[]>()
   // hardware-dependent constant

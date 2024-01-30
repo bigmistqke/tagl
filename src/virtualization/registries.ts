@@ -1,9 +1,9 @@
 import zeptoid from 'zeptoid'
 
-import { glsl } from 'src'
+import { GL, glsl } from 'src'
 import { compile } from '../compilation'
 import { RegistryBase } from '../data-structures/registry'
-import { Token } from '../types'
+import { GLLocation, Token } from '../types'
 import { createInstantiator, createWebGLProgram } from '../utils'
 import { createVirtualProgram } from './virtual-program'
 
@@ -76,32 +76,47 @@ export class ShaderLocationRegistry extends RegistryBase<
   static getInstance = createInstantiator<TemplateStringsArray>()(this)
 }
 
+export type ProgramRecord = {
+  program: WebGLProgram
+  locations: {
+    vertex: GLLocation[]
+    fragment: GLLocation[]
+  }
+}
+
 /** caches `WebGLProgram` based on vertex's and fragment's `TemplateStringArray` */
 export class ProgramRegistry extends RegistryBase<
   TemplateStringsArray,
-  RegistryBase<TemplateStringsArray, WebGLProgram>
+  RegistryBase<TemplateStringsArray, ProgramRecord>
 > {
-  constructor(private gl: WebGL2RenderingContext) {
+  constructor(private gl: GL) {
     super()
   }
   register(vertex: ReturnType<typeof glsl>, fragment: ReturnType<typeof glsl>) {
-    const registry = super._register(
-      vertex.template,
-      () => new RegistryBase<TemplateStringsArray, WebGLProgram>()
-    )
-    return registry.value._register(fragment.template, () => {
-      const program = createWebGLProgram(
-        this.gl,
-        vertex.compilation.code,
-        fragment.compilation.code
+    return super
+      ._register(
+        vertex.template,
+        () => new RegistryBase<TemplateStringsArray, ProgramRecord>()
       )
+      .value._register(fragment.template, () => {
+        const program = createWebGLProgram(
+          this.gl.ctx,
+          vertex.compilation.code,
+          fragment.compilation.code
+        )
 
-      createVirtualProgram(this.gl, program)
+        createVirtualProgram(this.gl.ctx, program)
 
-      return program
-    })
+        return {
+          program,
+          locations: {
+            vertex: vertex.getLocations({ gl: this.gl, program }),
+            fragment: fragment.getLocations({ gl: this.gl, program }),
+          },
+        }
+      })
   }
-  static getInstance = createInstantiator<WebGL2RenderingContext>()(this)
+  static getInstance = createInstantiator<GL>()(this)
 }
 
 /** caches `WebGLProgram` based on vertex's and fragment's `TemplateStringArray` */

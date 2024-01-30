@@ -1,6 +1,13 @@
-import type { AttributeTypes, Setter, Token, UniformTypes } from './types'
+import type {
+  AttributeTypes,
+  GLLocation,
+  Setter,
+  Token,
+  UniformTypes,
+} from './types'
 import { dataTypeToSize, uniformDataTypeToFunctionName } from './utils'
 import {
+  ProgramRecord,
   ProgramRegistry,
   glRegistry,
   shaderCompilationRegistry,
@@ -31,9 +38,9 @@ export const createUniform = (
 
   const token: Token = {
     compile: (name: string) => `uniform ${type} ${name};`,
-    getLocation: (gl, program, name) =>
+    getLocation: ({ gl, program, name }) =>
       gl.ctx.getUniformLocation(program, name)!,
-    initialize: (gl, virtualProgram, location) => {
+    initialize: ({ gl, virtualProgram, location }) => {
       if (virtualPrograms.has(virtualProgram)) return
       virtualPrograms.add(virtualProgram)
       const uniform = virtualProgram.registerUniform(location, getValue)
@@ -43,7 +50,7 @@ export const createUniform = (
         if (!gl.isPending) gl.requestRender()
       })
     },
-    update: (gl, virtualProgram, location) => {
+    update: ({ gl, virtualProgram, location }) => {
       const uniform = virtualProgram.registerUniform(location, getValue)
 
       if (uniform.value === value && !uniform.dirty) {
@@ -84,7 +91,7 @@ export const createAttribute = (
   const size = dataTypeToSize(type)
 
   const token: Token = {
-    initialize: (gl, virtualProgram, location) => {
+    initialize: ({ gl, virtualProgram, location }) => {
       if (virtualPrograms.has(virtualProgram)) return
       virtualPrograms.add(virtualProgram)
       onUpdates.push(() => {
@@ -92,9 +99,9 @@ export const createAttribute = (
         if (!gl.isPending) gl.requestRender()
       })
     },
-    getLocation: (gl, program, name) =>
+    getLocation: ({ gl, program, name }) =>
       gl.ctx.getAttribLocation(program, name)!,
-    update: (gl, virtualProgram, location) => {
+    update: ({ gl, virtualProgram, location }) => {
       const buffer = virtualProgram.registerBuffer(value)
       if (
         buffer.dirty ||
@@ -126,54 +133,53 @@ export const createAttribute = (
   return [token, setValue]
 }
 
-const locationMap = new Map<
-  TemplateStringsArray,
-  Map<WebGLProgram, (number | WebGLUniformLocation)[]>
->()
-
 export const glsl = function (
   template: TemplateStringsArray,
   ...tokens: Token[]
 ) {
-  let locationsRegistry = locationMap.get(template)!
-  if (!locationsRegistry) {
-    locationsRegistry = new Map()
-    locationMap.set(template, locationsRegistry)
-  }
   let { names, compilation } = shaderCompilationRegistry.register(
     template,
     tokens
   ).value
-
-  const getLocations = (program: WebGLProgram) => {
-    const locations = locationsRegistry.get(program)
-    if (!locations) {
-      throw 'no locations'
-    }
-    return locations
-  }
-
   return {
     compilation,
     template,
-    initialize: (
-      gl: GL,
-      program: WebGLProgram,
+    getLocations: ({ gl, program }: { gl: GL; program: WebGLProgram }) =>
+      tokens.map((token, index) =>
+        token.getLocation({ gl, program, name: names[index]! })
+      ),
+    initialize: ({
+      gl,
+      virtualProgram,
+      locations,
+    }: {
+      gl: GL
       virtualProgram: VirtualProgram
-    ) => {
-      if (locationsRegistry.has(program)) return
-      const locations = tokens.map((token, index) =>
-        token.getLocation(gl, program, names[index]!)
-      )
-      locationsRegistry.set(program, locations)
+      locations: GLLocation[]
+    }) => {
       for (let index = 0; index < tokens.length; index++) {
-        tokens[index]!.initialize(gl, virtualProgram, locations[index]!)
+        tokens[index]!.initialize({
+          gl,
+          virtualProgram,
+          location: locations[index]!,
+        })
       }
     },
-    update: (gl: GL, program: WebGLProgram, virtualProgram: VirtualProgram) => {
-      const locations = getLocations(program)
+    update: ({
+      gl,
+      virtualProgram,
+      locations,
+    }: {
+      gl: GL
+      virtualProgram: VirtualProgram
+      locations: GLLocation[]
+    }) => {
       for (let index = 0; index < tokens.length; index++) {
-        tokens[index]!.update(gl, virtualProgram, locations[index]!)
+        tokens[index]!.update({
+          gl,
+          virtualProgram,
+          location: locations[index]!,
+        })
       }
     },
   }
@@ -254,16 +260,28 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
     }) => {
       const gl_record = glRegistry.register(gl.ctx)
 
-      const program = ProgramRegistry.getInstance(gl.ctx).register(
+      const { program, locations } = ProgramRegistry.getInstance(gl).register(
         vertex,
         fragment
-      ).value
+      ).value as ProgramRecord
 
       const virtualProgram = getVirtualProgram(program)
 
       gl.ctx.useProgram(program)
-      vertex.initialize(gl, program, virtualProgram)
-      fragment.initialize(gl, program, virtualProgram)
+
+      const vertexOptions = {
+        gl,
+        virtualProgram,
+        locations: locations.vertex,
+      }
+      const fragmentOptions = {
+        gl,
+        virtualProgram,
+        locations: locations.fragment,
+      }
+
+      vertex.initialize(vertexOptions)
+      fragment.initialize(fragmentOptions)
 
       return {
         draw: () => {
@@ -271,8 +289,8 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
             gl.ctx.useProgram(program)
             gl_record.value.program = program
           }
-          vertex.update(gl, program, virtualProgram)
-          fragment.update(gl, program, virtualProgram)
+          vertex.update(vertexOptions)
+          fragment.update(fragmentOptions)
           gl.ctx.drawArrays(gl.ctx.TRIANGLES, 0, count)
         },
         program,

@@ -18,22 +18,22 @@ export type AttributeTypes =
   | 'mat3'
   | 'mat4'
 export type Token = {
-  initialize: (
-    gl: GL,
-    virtualProgram: VirtualProgram,
+  initialize: (options: {
+    gl: GL
+    virtualProgram: VirtualProgram
     location: WebGLUniformLocation | number
-  ) => void
-  getLocation: (
-    gl: GL,
-    program: WebGLProgram,
+  }) => void
+  getLocation: (options: {
+    gl: GL
+    program: WebGLProgram
     name: string
-  ) => WebGLUniformLocation
+  }) => WebGLUniformLocation
   compile: (name: string) => string | undefined
-  update: (
-    gl: GL,
-    virtualProgram: VirtualProgram,
+  update: (options: {
+    gl: GL
+    virtualProgram: VirtualProgram
     location: WebGLUniformLocation | number
-  ) => void
+  }) => void
 }
 export type Setter = (
   value: Float32Array | ((value: Float32Array) => Float32Array)
@@ -49,3 +49,5 @@ export type GLProgram = {
   draw: () => void
   program: WebGLProgram
 }
+
+export type GLLocation = WebGLUniformLocation | number

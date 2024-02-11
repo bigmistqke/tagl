@@ -1,0 +1,5 @@
+export { createGL, type GL, type Program } from './create-gl'
+export { Deque } from './data-structures/deque'
+export { DequeMap } from './data-structures/deque-map'
+export { glsl, isShader, type ShaderToken } from './glsl'
+export { attribute, uniform } from './tokens'

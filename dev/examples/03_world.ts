@@ -24,7 +24,7 @@ scene.camera((camera) => mat4.translate(camera, camera, [0, 0, -1]) as Float32Ar
 scene.add(plane)
 
 setTimeout(() => {
-  plane.color.set((color) => {
+  plane.color((color) => {
     color[0] = 0
     color[1] = 1
     color[2] = 0

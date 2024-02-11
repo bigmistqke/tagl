@@ -1,9 +1,9 @@
 import zeptoid from 'zeptoid'
 
-import { GL, glsl } from 'src'
+import { GL, glsl } from 'src/core'
 import { compile } from '../compilation'
 import { RegistryBase } from '../data-structures/registry'
-import { GLLocation, Token } from '../types'
+import { BufferOptions, GLLocation, Token } from '../types'
 import { createInstantiator, createWebGLProgram } from '../utils'
 import { createVirtualProgram } from './virtual-program'
 
@@ -12,11 +12,12 @@ export class BufferRegistry extends RegistryBase<Float32Array, WebGLBuffer> {
   constructor(private gl: WebGL2RenderingContext) {
     super()
   }
-  register(value: Float32Array) {
+  register(value: Float32Array, options: BufferOptions) {
     return super._register(value, () => {
       const buffer = this.gl.createBuffer()
-      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer)
-      this.gl.bufferData(this.gl.ARRAY_BUFFER, value, this.gl.STATIC_DRAW)
+      this.gl.bindBuffer(this.gl[options.target], buffer)
+      this.gl.bufferData(this.gl[options.target], value, this.gl[options.usage])
+      this.gl.finish()
       if (!buffer) throw 'Unable to create texture'
       return buffer
     })
@@ -128,24 +129,11 @@ class GLRegistry extends RegistryBase<
 > {
   register(gl: WebGL2RenderingContext) {
     return super._register(gl, () => {
-      initializeGl(gl)
       return {
         program: undefined,
       }
     })
   }
-}
-
-const initializeGl = (gl: WebGL2RenderingContext) => {
-  const resizeObserver = new ResizeObserver(() => {
-    if (gl.canvas instanceof OffscreenCanvas) {
-      throw 'can not autosize OffscreenCanvas'
-    }
-    gl.canvas.width = gl.canvas.clientWidth
-    gl.canvas.height = gl.canvas.clientHeight
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
-  })
-  resizeObserver.observe(gl.canvas as HTMLCanvasElement)
 }
 
 export const glRegistry = new GLRegistry()

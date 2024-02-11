@@ -13,7 +13,7 @@ like `signal-gl` but without the signals
 >
 > `bigmistqke` should be a **kebab-case** string from your profile URL.
 
-## Quick start
+<!-- ## Quick start
 
 Install it:
 
@@ -23,7 +23,7 @@ npm i tagl
 yarn add tagl
 # or
 pnpm add tagl
-```
+``` -->
 
 Use it:
 

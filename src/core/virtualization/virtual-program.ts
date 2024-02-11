@@ -1,10 +1,14 @@
+import { BufferOptions } from 'src/core/types'
 import { Registry } from '../data-structures/registry'
 import { BufferRegistry, TextureRegistry } from './registries'
 import { TextureSlots } from './texture-slots'
 
 export class VirtualProgram {
   private attributes: Map<number, Float32Array>
-  private uniforms: Registry<WebGLUniformLocation, Float32Array | number>
+  private uniforms: Registry<
+    WebGLUniformLocation,
+    Float32Array | number | number | boolean | HTMLImageElement
+  >
   private buffers: BufferRegistry
   private textures: TextureRegistry
   private textureSlots: TextureSlots
@@ -28,8 +32,8 @@ export class VirtualProgram {
     this.attributes.set(name, value)
   }
 
-  registerBuffer(value: Float32Array) {
-    return this.buffers.register(value)
+  registerBuffer(value: Float32Array, options: BufferOptions) {
+    return this.buffers.register(value, options)
   }
   dirtyBuffer(value: Float32Array) {
     this.buffers.dirty(value)
@@ -37,7 +41,7 @@ export class VirtualProgram {
 
   registerUniform(
     location: WebGLUniformLocation,
-    value: () => Float32Array | number
+    value: () => Float32Array | number | boolean | HTMLImageElement
   ) {
     return this.uniforms.register(location, value)
   }

@@ -17,6 +17,25 @@ export class DequeMap<TKey, TValue> {
     return this.map.get(key)?.value
   }
 
+  forEach(callback: (node: DequeMapNode<TKey, TValue>, index: number) => void) {
+    let index = 0
+    let current = this.head
+    while (true) {
+      if (!current) break
+      callback(current, index)
+      index++
+      current = current.next
+    }
+  }
+
+  remove(key: TKey) {
+    const existingNode = this.map.get(key)
+    if (!existingNode) return
+    if (existingNode.next) existingNode.next.prev = existingNode.prev
+    if (existingNode.prev) existingNode.prev.next = existingNode.next
+    this.map.delete(key)
+  }
+
   moveNodeToEnd(node: DequeMapNode<TKey, TValue>) {
     // Move to the end
     node.prev = this.tail
@@ -25,6 +44,29 @@ export class DequeMap<TKey, TValue> {
       this.tail.next = node
     }
     this.tail = node
+  }
+
+  /** Pushes a new node or moves it to the end if it already exists */
+  push(key: TKey, value: TValue) {
+    const existingNode = this.map.get(key)
+
+    if (existingNode) {
+      this.remove(key)
+    }
+
+    const newNode = new DequeMapNode(key, value)
+
+    if (!this.head || !this.tail) {
+      // initialize
+      this.head = this.tail = newNode
+    } else {
+      this.tail.next = newNode
+      newNode.prev = this.tail
+      this.tail = newNode
+    }
+    this.map.set(key, newNode)
+
+    return newNode.value
   }
 
   /** Pushes a new node or moves it to the end if it already exists */

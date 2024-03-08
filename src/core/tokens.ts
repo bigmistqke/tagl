@@ -68,6 +68,32 @@ export type UniformProxy = {
   samplerCube: Variable<Float32Array, Sampler2DOptions>
 }
 
+/**********************************************************************************/
+/*                                                                                */
+/*                                    OBSERVABLE                                  */
+/*                                                                                */
+/**********************************************************************************/
+
+const createObservable = <T>(getValue: () => T) => {
+  const subscriptions = new ReferenceCount<(value: T) => void>()
+  const update = () => subscriptions.forEach((callback) => callback(getValue()))
+  const subscribe = (callback: (value: T) => void) => {
+    subscriptions.add(callback)
+    update()
+    return () => subscriptions.delete(callback)
+  }
+  return {
+    subscribe,
+    update,
+  }
+}
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                      UNIFORM                                   */
+/*                                                                                */
+/**********************************************************************************/
+
 /**
  * template-helper to inject uniform into `glsl`
  * @example
@@ -90,22 +116,18 @@ export const uniform = new Proxy({} as UniformProxy, {
       const functionName = uniformDataTypeToFunctionName(type)
       const getValue = () => value
       const onUpdates: (() => void)[] = []
-      const subscriptions = new ReferenceCount<Parameters<Token['subscribe']>[0]>()
-      const updateSubscriptions = () => subscriptions.forEach((callback) => callback(value))
       const virtualPrograms = new Set<VirtualProgram>()
 
-      const token: Token = {
-        subscribe: (callback) => {
-          subscriptions.add(callback)
-          updateSubscriptions()
-          return () => subscriptions.delete(callback)
-        },
+      const observable = createObservable(getValue)
+
+      const token: Token<typeof value> = {
+        subscribe: observable.subscribe,
         set: (_value) => {
           value = typeof _value === 'function' ? _value(value) : _value
           for (let i = 0; i < onUpdates.length; i++) {
             onUpdates[i]!()
           }
-          updateSubscriptions()
+          observable.update()
         },
         get value() {
           return getValue()
@@ -203,8 +225,8 @@ export const attribute = new Proxy({} as AttributeProxy, {
       const virtualPrograms = new Set<VirtualProgram>()
       const onUpdates: (() => void)[] = []
       const size = dataTypeToSize(type)
-      const subscriptions = new ReferenceCount<Parameters<Token['subscribe']>[0]>()
-      const updateSubscriptions = () => subscriptions.forEach((callback) => callback(value))
+      const getValue = () => value
+      const observable = createObservable(getValue)
 
       const token: Token = {
         compile: (name) => `in ${type} ${name};`,
@@ -217,12 +239,9 @@ export const attribute = new Proxy({} as AttributeProxy, {
           for (let i = 0; i < onUpdates.length; i++) {
             onUpdates[i]!()
           }
+          observable.update()
         },
-        subscribe: (callback) => {
-          subscriptions.add(callback)
-          updateSubscriptions()
-          return () => subscriptions.delete(callback)
-        },
+        subscribe: observable.subscribe,
         initialize: ({ gl, virtualProgram, location }) => {
           if (virtualPrograms.has(virtualProgram)) return
           virtualPrograms.add(virtualProgram)

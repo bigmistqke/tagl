@@ -1,4 +1,4 @@
-import { attribute, createGL, glsl, uniform } from 'src'
+import { attribute, createGL, glsl, uniform } from '../src/core'
 
 import { mat4 } from 'gl-matrix'
 

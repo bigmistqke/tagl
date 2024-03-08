@@ -16,6 +16,7 @@ type ProgramOptions = {
 
 export type GL = {
   autosize: () => void
+  onResize: (callback: (canvas: HTMLCanvasElement) => void) => () => void
   ctx: WebGL2RenderingContext
   setStack(...programs: (Program | DequeMap<any, Program>)[]): void
   isPending: boolean
@@ -61,7 +62,9 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
     gl.isPending = false
   }
 
-  const gl = {
+  const onResizeCallbacks = new Set<(canvas: HTMLCanvasElement) => void>()
+
+  const gl: GL = {
     autosize: () => {
       const resizeObserver = new ResizeObserver(() => {
         if (canvas instanceof OffscreenCanvas) {
@@ -71,8 +74,13 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
         canvas.height = canvas.clientHeight
         ctx.viewport(0, 0, canvas.width, canvas.height)
         gl.requestRender()
+        onResizeCallbacks.forEach((callback) => callback(canvas))
       })
       resizeObserver.observe(canvas as HTMLCanvasElement)
+    },
+    onResize: (callback: (canvas: HTMLCanvasElement) => void) => {
+      onResizeCallbacks.add(callback)
+      return () => onResizeCallbacks.delete(callback)
     },
     ctx,
     setStack(...programs: (Program | DequeMap<any, Program>)[]) {
@@ -132,7 +140,6 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
           if (count) {
             gl.ctx.drawArrays(gl.ctx.TRIANGLES, 0, count)
           } else if (indices && indicesBuffer) {
-            console.log('render')
             gl.ctx.drawElements(gl.ctx.TRIANGLES, indices.length, gl.ctx.UNSIGNED_SHORT, 0)
           }
         },

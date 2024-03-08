@@ -1,5 +1,5 @@
 /** Map with reference-count and dirty-property */
-export class RegistryBase<TKey, TData> {
+export class RegistryBase<TKey, TData = unknown> {
   map = new Map<TKey, { value: TData; count: number; dirty: boolean }>()
 
   has(key: TKey) {
@@ -51,6 +51,6 @@ export class RegistryBase<TKey, TData> {
 }
 
 /** Map with reference-count and dirty-property */
-export class Registry<TKey, TData> extends RegistryBase<TKey, TData> {
+export class Registry<TKey, TData = unknown> extends RegistryBase<TKey, TData> {
   register = super._register
 }

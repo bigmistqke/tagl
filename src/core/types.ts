@@ -1,3 +1,4 @@
+import { mat2, mat3, mat4, vec2, vec3, vec4 } from 'gl-matrix'
 import { GL } from 'src/core'
 import { Registry } from './data-structures/registry'
 import { BufferRegistry, TextureRegistry } from './virtualization/registries'
@@ -22,6 +23,13 @@ export type ResolveTuple<T extends any> = {
   [P in keyof T]: T[P] extends (...args: any) => any ? ReturnType<T[P]> : T[P]
 }
 export type Resolve<T> = T extends (...args: any[]) => any ? ReturnType<T> : T
+
+export type Mat2 = ReturnType<typeof mat2.create>
+export type Mat3 = ReturnType<typeof mat3.create>
+export type Mat4 = ReturnType<typeof mat4.create>
+export type Vec2 = ReturnType<typeof vec2.create>
+export type Vec3 = ReturnType<typeof vec3.create>
+export type Vec4 = ReturnType<typeof vec4.create>
 
 /**********************************************************************************/
 /*                                                                                */
@@ -49,6 +57,7 @@ export type Token<T = Float32Array> = {
   set: Setter<T>
   value: T
   update: (options: { gl: GL; virtualProgram: VirtualProgram; location: WebGLUniformLocation | number }) => void
+  subscribe: (callback: (value: T) => void) => () => void
 }
 
 export type BufferToken = {

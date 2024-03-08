@@ -11,7 +11,7 @@ scene.autosize()
 //prettier-ignore
 const plane = createPlane({
   color: new Float32Array([1, 0, 0]),
-  matrix: mat4.create() as Float32Array,
+  matrix: mat4.create(),
   fragment: ({color}) => glsl`#version 300 es
     precision highp float;
     out vec4 color;
@@ -19,8 +19,11 @@ const plane = createPlane({
       color = vec4(${color}, 1.);
     }`
 })
+plane.color.subscribe((value) => {
+  console.log('value', value)
+})
 
-scene.camera((camera) => mat4.translate(camera, camera, [0, 0, -1]) as Float32Array)
+scene.camera.set((camera) => mat4.translate(camera, camera, [0, 0, -1]) as Float32Array)
 scene.add(plane)
 
 setTimeout(() => {

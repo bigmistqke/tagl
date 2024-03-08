@@ -1,5 +1,19 @@
 import { GL } from '.'
-import { BufferToken, DataType, Format, InternalFormat, Token, ValueOf } from './types'
+import { ReferenceCount } from './data-structures/reference-count'
+import {
+  BufferToken,
+  DataType,
+  Format,
+  InternalFormat,
+  Mat2,
+  Mat3,
+  Mat4,
+  Token,
+  ValueOf,
+  Vec2,
+  Vec3,
+  Vec4,
+} from './types'
 import { dataTypeToSize, log, uniformDataTypeToFunctionName } from './utils'
 import { VirtualProgram } from './virtualization/virtual-program'
 
@@ -40,18 +54,15 @@ export type UniformProxy = {
   float: Variable<number>
   int: Variable<number>
   bool: Variable<boolean>
-  vec2: Variable<Float32Array>
-  ivec2: Variable<Float32Array>
-  bvec2: Variable<Float32Array>
-  vec3: Variable<Float32Array>
-  ivec3: Variable<Float32Array>
-  bvec3: Variable<Float32Array>
-  vec4: Variable<Float32Array>
-  ivec4: Variable<Float32Array>
-  bvec4: Variable<Float32Array>
-  mat2: Variable<Float32Array>
-  mat3: Variable<Float32Array>
-  mat4: Variable<Float32Array>
+  vec2: Variable<Vec2>
+  vec3: Variable<Vec3>
+  vec4: Variable<Vec4>
+  ivec2: Variable<Vec2>
+  ivec3: Variable<Vec3>
+  ivec4: Variable<Vec4>
+  mat2: Variable<Mat2>
+  mat3: Variable<Mat3>
+  mat4: Variable<Mat4>
   sampler2D: Variable<Float32Array | HTMLImageElement, Sampler2DOptions>
   isampler2D: Variable<Float32Array, Sampler2DOptions>
   samplerCube: Variable<Float32Array, Sampler2DOptions>
@@ -77,15 +88,24 @@ export const uniform = new Proxy({} as UniformProxy, {
   get(target, type: string) {
     return (...[value, options]: UniformParameters) => {
       const functionName = uniformDataTypeToFunctionName(type)
-      const onUpdates: (() => void)[] = []
-      const virtualPrograms = new Set<VirtualProgram>()
       const getValue = () => value
+      const onUpdates: (() => void)[] = []
+      const subscriptions = new ReferenceCount<Parameters<Token['subscribe']>[0]>()
+      const updateSubscriptions = () => subscriptions.forEach((callback) => callback(value))
+      const virtualPrograms = new Set<VirtualProgram>()
+
       const token: Token = {
+        subscribe: (callback) => {
+          subscriptions.add(callback)
+          updateSubscriptions()
+          return () => subscriptions.delete(callback)
+        },
         set: (_value) => {
           value = typeof _value === 'function' ? _value(value) : _value
           for (let i = 0; i < onUpdates.length; i++) {
             onUpdates[i]!()
           }
+          updateSubscriptions()
         },
         get value() {
           return getValue()
@@ -183,8 +203,12 @@ export const attribute = new Proxy({} as AttributeProxy, {
       const virtualPrograms = new Set<VirtualProgram>()
       const onUpdates: (() => void)[] = []
       const size = dataTypeToSize(type)
+      const subscriptions = new ReferenceCount<Parameters<Token['subscribe']>[0]>()
+      const updateSubscriptions = () => subscriptions.forEach((callback) => callback(value))
 
       const token: Token = {
+        compile: (name) => `in ${type} ${name};`,
+        getLocation: ({ gl, program, name }) => gl.ctx.getAttribLocation(program, name)!,
         get value() {
           return value
         },
@@ -194,6 +218,11 @@ export const attribute = new Proxy({} as AttributeProxy, {
             onUpdates[i]!()
           }
         },
+        subscribe: (callback) => {
+          subscriptions.add(callback)
+          updateSubscriptions()
+          return () => subscriptions.delete(callback)
+        },
         initialize: ({ gl, virtualProgram, location }) => {
           if (virtualPrograms.has(virtualProgram)) return
           virtualPrograms.add(virtualProgram)
@@ -202,7 +231,6 @@ export const attribute = new Proxy({} as AttributeProxy, {
             if (!gl.isPending) gl.requestRender()
           })
         },
-        getLocation: ({ gl, program, name }) => gl.ctx.getAttribLocation(program, name)!,
         update: ({ gl, virtualProgram, location }) => {
           const buffer = virtualProgram.registerBuffer(value, {
             usage: 'STATIC_DRAW',
@@ -223,7 +251,6 @@ export const attribute = new Proxy({} as AttributeProxy, {
           gl.ctx.vertexAttribPointer(location as number, size, gl.ctx.FLOAT, false, 0, 0)
           gl.ctx.enableVertexAttribArray(location as number)
         },
-        compile: (name) => `in ${type} ${name};`,
       }
       return token
     }

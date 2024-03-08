@@ -23,7 +23,7 @@ plane.color.subscribe((value) => {
   console.log('value', value)
 })
 
-scene.camera((camera) => mat4.translate(camera, camera, [0, 0, -1]) as Float32Array)
+scene.camera.set((camera) => mat4.translate(camera, camera, [0, 0, -1]) as Float32Array)
 scene.add(plane)
 
 setTimeout(() => {

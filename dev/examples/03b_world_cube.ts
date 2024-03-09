@@ -1,4 +1,4 @@
-import { mat4 } from 'gl-matrix'
+import { mat4, vec3 } from 'gl-matrix'
 import { glsl } from 'src/core'
 import { createCube, createScene } from 'world'
 
@@ -19,21 +19,20 @@ const cube = createCube({
       color = vec4(${color}, 1.);
     }`
 })
-cube.color.subscribe((value) => {
-  console.log('value', value)
-})
 
-scene.camera.set((camera) => mat4.translate(camera, camera, [0, 0, -1]) as Float32Array)
+scene.camera.set((camera) => mat4.translate(camera, camera, [0, 0, -1]))
 scene.add(cube)
 
-setTimeout(() => {
-  cube.color.set((color) => {
-    color[0] = 0
-    color[1] = 1
-    color[2] = 0
-    return color
-  })
-}, 1000)
+const colors = [
+  [1, 0, 0],
+  [0, 1, 0],
+] as const
+let toggle: 0 | 1 = 0
+
+setInterval(() => {
+  toggle = (toggle + 1) % 2
+  cube.color.set((color) => vec3.set(color, ...colors[toggle]))
+}, 500)
 
 scene.onLoop((time) => {
   cube.matrix.set((matrix) => {

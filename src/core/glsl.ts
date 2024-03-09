@@ -13,17 +13,9 @@ export const glsl = function (template: TemplateStringsArray, ...tokens: Token[]
     template,
     getLocations: ({ gl, program }: { gl: GL; program: WebGLProgram }) =>
       tokens.map((token, index) => token.getLocation({ gl, program, name: names[index]! })),
-    initialize: ({
-      gl,
-      virtualProgram,
-      locations,
-    }: {
-      gl: GL
-      virtualProgram: VirtualProgram
-      locations: GLLocation[]
-    }) => {
+    bind: ({ gl, virtualProgram, locations }: { gl: GL; virtualProgram: VirtualProgram; locations: GLLocation[] }) => {
       for (let index = 0; index < tokens.length; index++) {
-        tokens[index]!.initialize({
+        tokens[index]!.bind({
           gl,
           virtualProgram,
           location: locations[index]!,

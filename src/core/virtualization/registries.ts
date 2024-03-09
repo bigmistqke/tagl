@@ -8,11 +8,11 @@ import { createInstantiator, createWebGLProgram } from '../utils'
 import { createVirtualProgram } from './virtual-program'
 
 /** caches `WebGLBuffer` based on reference */
-export class BufferRegistry extends RegistryBase<Float32Array, WebGLBuffer> {
+export class BufferRegistry extends RegistryBase<BufferSource, WebGLBuffer> {
   constructor(private gl: WebGL2RenderingContext) {
     super()
   }
-  register(value: Float32Array, options: BufferOptions) {
+  register<T extends BufferSource>(value: T, options: BufferOptions) {
     return super._register(value, () => {
       const buffer = this.gl.createBuffer()
       this.gl.bindBuffer(this.gl[options.target], buffer)
@@ -69,10 +69,7 @@ class ShaderCompilationRegistry extends RegistryBase<
 export const shaderCompilationRegistry = new ShaderCompilationRegistry()
 
 /** caches uniform/attribute-locations based on `glsl`-shader's `TemplateStringArray` and `WebGLProgram`  */
-export class ShaderLocationRegistry extends RegistryBase<
-  WebGLProgram,
-  (number | WebGLUniformLocation)[]
-> {
+export class ShaderLocationRegistry extends RegistryBase<WebGLProgram, (number | WebGLUniformLocation)[]> {
   register = super._register
   static getInstance = createInstantiator<TemplateStringsArray>()(this)
 }
@@ -95,16 +92,9 @@ export class ProgramRegistry extends RegistryBase<
   }
   register(vertex: ReturnType<typeof glsl>, fragment: ReturnType<typeof glsl>) {
     return super
-      ._register(
-        vertex.template,
-        () => new RegistryBase<TemplateStringsArray, ProgramRecord>()
-      )
+      ._register(vertex.template, () => new RegistryBase<TemplateStringsArray, ProgramRecord>())
       .value._register(fragment.template, () => {
-        const program = createWebGLProgram(
-          this.gl.ctx,
-          vertex.compilation.code,
-          fragment.compilation.code
-        )
+        const program = createWebGLProgram(this.gl.ctx, vertex.compilation.code, fragment.compilation.code)
 
         createVirtualProgram(this.gl.ctx, program)
 

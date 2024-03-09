@@ -1,9 +1,10 @@
-import { mat4 } from 'gl-matrix'
+import { mat4, vec3 } from 'gl-matrix'
 
 import { GL, Program, ShaderToken, attribute, createGL, glsl, isShader, uniform } from '../core'
 import { DequeMap } from '../core/data-structures'
 
-import { Mat4, Token, Vec3 } from '../core/types'
+import { Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, isToken } from '../core/tokens'
+import { Mat4, Vec3 } from '../core/types'
 
 /**********************************************************************************/
 /*                                                                                */
@@ -59,7 +60,7 @@ export type Group = {
   remove: (object3D: Object3D) => void
   update: () => void
 }
-export type Object3D = Group & {
+export type Object3D = /* Group &  */ {
   program: () => Program
 }
 export const createGroup = (options?: { matrix: Float32Array; children?: any[] }) => {
@@ -67,7 +68,7 @@ export const createGroup = (options?: { matrix: Float32Array; children?: any[] }
   const children = new DequeMap<Object3D, Program>()
 
   let _matrix = options?.matrix || new Float32Array()
-  const matrix = uniform.mat4(mat4.add(_matrix, _matrix, parent.matrix.value))
+  const matrix = uniform.mat4(mat4.add(_matrix, _matrix, parent.matrix.get()))
 
   const api = {
     ...parent,
@@ -168,18 +169,18 @@ type ShapeOptionsShader =
 type ShapeOptionsBase = {
   matrix: Mat4
   color: Vec3
-  vertices: Float32Array
-  uv: Float32Array
+  vertices: Float32Array | Token<Float32Array> | Atom<Float32Array>
+  uv: Float32Array | Token<Float32Array> | Atom<Float32Array>
   vertex?: ShapeOptionsShader
   fragment?: ShapeOptionsShader
 }
 
 type ShapeOptionsCount = ShapeOptionsBase & {
-  count: number
+  count: number | Atom<number>
   indices?: never
 }
 type ShapeOptionsIndices = ShapeOptionsBase & {
-  indices: number[]
+  indices: number[] | BufferToken<Uint16Array> | Atom<Uint16Array>
   count?: never
 }
 export type ShapeOptions = ShapeOptionsCount | ShapeOptionsIndices
@@ -191,14 +192,25 @@ export type Shape = Object3D & {
   uv: Token<Float32Array>
 }
 
-export const createShape = (options: ShapeOptions): Shape => {
+export const createShape = <TOptions extends ShapeOptions>(
+  options: TOptions
+): TOptions['indices'] extends never ? Shape : Shape & { indices: BufferToken<Uint16Array> } => {
   // const group = createGroup(options)
   const color = uniform.vec3(options.color)
   const matrix = uniform.mat4(options.matrix)
-  const vertices = attribute.vec3(options.vertices)
-  const uv = attribute.vec2(options.uv)
+  const vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
+  const uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
 
-  return {
+  const indicesBuffer = options.indices
+    ? isBufferToken<Uint16Array>(options.indices)
+      ? options.indices
+      : buffer(isAtom<Uint16Array>(options.indices) ? options.indices : new Uint16Array(options.indices), {
+          target: 'ELEMENT_ARRAY_BUFFER',
+          usage: 'STATIC_DRAW',
+        })
+    : undefined
+
+  const shape = {
     matrix,
     color,
     vertices,
@@ -232,10 +244,18 @@ export const createShape = (options: ShapeOptions): Shape => {
             }`
 
       return gl.createProgram(
-        options.count ? { vertex, fragment, count: options.count } : { vertex, fragment, indices: options.indices! }
+        indicesBuffer ? { vertex, fragment, indices: indicesBuffer } : { vertex, fragment, count: options.count! }
       )
     },
   }
+
+  if (options.indices) {
+    return {
+      ...shape,
+      indices: indicesBuffer!,
+    }
+  }
+  return shape
 }
 
 /**********************************************************************************/
@@ -329,3 +349,74 @@ export const createCube = (options: Omit<ShapeOptions, 'vertices' | 'indices' | 
     ...options,
     ..._cube,
   })
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                       DISC                                     */
+/*                                                                                */
+/**********************************************************************************/
+
+export const createDisc = (
+  options: Omit<ShapeOptions, 'vertices' | 'indices' | 'uv'> & {
+    radius: number
+    segments: number
+  }
+) => {
+  const radius = atom(options.radius)
+  const segments = atom(options.segments)
+
+  const vertices = atom(new Float32Array())
+  const uv = atom(new Float32Array())
+  const indices = atom(new Uint16Array())
+
+  const update = () => {
+    const size = segments.get() + 1
+
+    vertices.set(() => {
+      const vertices = new Float32Array(size * 3)
+
+      for (let index = 0; index <= vertices.length; index = index + 3) {
+        const vertex = vertices.subarray(index, index + 2)
+        if (index === 0) {
+          vec3.set(vertex, 0, 0, 0)
+          continue
+        }
+        const ratio = (index / 3 - 1) / segments.get()
+        vec3.set(vertex, Math.sin(ratio * Math.PI * 2) * radius.get(), Math.cos(ratio * Math.PI * 2) * radius.get(), 0)
+      }
+
+      uv.set(vertices)
+
+      return vertices
+    })
+
+    indices.set(() => {
+      const indices: number[] = []
+      for (let i = 1; i < size; i++) {
+        if (i + 1 === size) {
+          indices.push(i, 1, 0)
+        } else {
+          indices.push(i, i + 1, 0)
+        }
+      }
+
+      return new Uint16Array(indices)
+    })
+  }
+
+  effect(update, [radius, segments])
+
+  const shape = createShape({
+    vertices,
+    uv,
+    indices,
+    matrix: options.matrix,
+    color: options.color,
+  })
+
+  return {
+    ...shape,
+    radius,
+    segments,
+  }
+}

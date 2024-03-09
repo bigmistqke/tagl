@@ -1,9 +1,7 @@
 import { mat2, mat3, mat4, vec2, vec3, vec4 } from 'gl-matrix'
-import { GL } from 'src/core'
 import { Registry } from './data-structures/registry'
 import { BufferRegistry, TextureRegistry } from './virtualization/registries'
 import { type TextureSlots } from './virtualization/texture-slots'
-import { VirtualProgram } from './virtualization/virtual-program'
 
 /**********************************************************************************/
 /*                                                                                */
@@ -24,12 +22,14 @@ export type ResolveTuple<T extends any> = {
 }
 export type Resolve<T> = T extends (...args: any[]) => any ? ReturnType<T> : T
 
-export type Mat2 = ReturnType<typeof mat2.create>
-export type Mat3 = ReturnType<typeof mat3.create>
-export type Mat4 = ReturnType<typeof mat4.create>
-export type Vec2 = ReturnType<typeof vec2.create>
-export type Vec3 = ReturnType<typeof vec3.create>
-export type Vec4 = ReturnType<typeof vec4.create>
+type Brand<K, T> = K & { __brand: T }
+
+export type Mat2 = mat2
+export type Mat3 = mat3
+export type Mat4 = mat4
+export type Vec2 = vec2
+export type Vec3 = vec3
+export type Vec4 = vec4
 
 /**********************************************************************************/
 /*                                                                                */
@@ -50,21 +50,6 @@ export type AttributeTypes =
   | 'mat2'
   | 'mat3'
   | 'mat4'
-export type Token<T = Float32Array> = {
-  compile: (name: string) => string | undefined
-  initialize: (options: { gl: GL; virtualProgram: VirtualProgram; location: WebGLUniformLocation | number }) => void
-  getLocation: (options: { gl: GL; program: WebGLProgram; name: string }) => WebGLUniformLocation
-  set: Setter<T>
-  value: T
-  update: (options: { gl: GL; virtualProgram: VirtualProgram; location: WebGLUniformLocation | number }) => void
-  subscribe: (callback: (value: T) => void) => () => void
-}
-
-export type BufferToken = {
-  initialize: (options: { gl: GL; virtualProgram: VirtualProgram }) => BufferToken
-  set: Setter
-  update: (options: { gl: GL; virtualProgram: VirtualProgram }) => BufferToken
-}
 
 export type BufferUsage =
   | 'STATIC_DRAW'

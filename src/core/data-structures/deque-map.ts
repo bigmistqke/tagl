@@ -57,7 +57,7 @@ export class DequeMap<TKey, TValue> {
     const newNode = new DequeMapNode(key, value)
 
     if (!this.head || !this.tail) {
-      // initialize
+      // bind
       this.head = this.tail = newNode
     } else {
       this.tail.next = newNode
@@ -94,7 +94,7 @@ export class DequeMap<TKey, TValue> {
     const newNode = new DequeMapNode(key, callback())
 
     if (!this.head || !this.tail) {
-      // initialize
+      // bind
       this.head = this.tail = newNode
     } else {
       this.tail.next = newNode

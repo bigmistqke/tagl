@@ -21,7 +21,7 @@ export class RegistryBase<TKey, TData = unknown> {
       this.map.set(key, entry)
       return entry
     } else {
-      record.count++
+      // record.count++
       return record
     }
   }

@@ -59,7 +59,7 @@ export class Deque<TValue> {
     const newNode = new DequeNode(value)
 
     if (!this.head || !this.tail) {
-      // initialize
+      // bind
       this.head = this.tail = newNode
     } else {
       this.tail.next = newNode

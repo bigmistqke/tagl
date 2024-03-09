@@ -5,10 +5,7 @@ import { TextureSlots } from './texture-slots'
 
 export class VirtualProgram {
   private attributes: Map<number, Float32Array>
-  private uniforms: Registry<
-    WebGLUniformLocation,
-    Float32Array | number | number | boolean | HTMLImageElement
-  >
+  private uniforms: Registry<WebGLUniformLocation, Float32Array | number | number | boolean | HTMLImageElement>
   private buffers: BufferRegistry
   private textures: TextureRegistry
   private textureSlots: TextureSlots
@@ -32,17 +29,14 @@ export class VirtualProgram {
     this.attributes.set(name, value)
   }
 
-  registerBuffer(value: Float32Array, options: BufferOptions) {
+  registerBuffer<T extends BufferSource>(value: T, options: BufferOptions) {
     return this.buffers.register(value, options)
   }
   dirtyBuffer(value: Float32Array) {
     this.buffers.dirty(value)
   }
 
-  registerUniform(
-    location: WebGLUniformLocation,
-    value: () => Float32Array | number | boolean | HTMLImageElement
-  ) {
+  registerUniform(location: WebGLUniformLocation, value: () => Float32Array | number | boolean | HTMLImageElement) {
     return this.uniforms.register(location, value)
   }
   updateUniform(name: string, value: Float32Array | number) {
@@ -54,10 +48,7 @@ export class VirtualProgram {
 }
 
 const virtualPrograms = new Map<WebGLProgram, VirtualProgram>()
-export const createVirtualProgram = (
-  gl: WebGL2RenderingContext,
-  program: WebGLProgram
-) => {
+export const createVirtualProgram = (gl: WebGL2RenderingContext, program: WebGLProgram) => {
   virtualPrograms.set(program, new VirtualProgram(gl))
 }
 export const getVirtualProgram = (program: WebGLProgram) => {

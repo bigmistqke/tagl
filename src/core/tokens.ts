@@ -1,14 +1,14 @@
 import { GL } from '.'
 import { ReferenceCount } from './data-structures/reference-count'
 import {
-  BufferToken,
+  Accessor,
   DataType,
   Format,
   InternalFormat,
   Mat2,
   Mat3,
   Mat4,
-  Token,
+  Setter,
   ValueOf,
   Vec2,
   Vec3,
@@ -16,6 +16,14 @@ import {
 } from './types'
 import { dataTypeToSize, log, uniformDataTypeToFunctionName } from './utils'
 import { VirtualProgram } from './virtualization/virtual-program'
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                    CONSTANTS                                   */
+/*                                                                                */
+/**********************************************************************************/
+
+const $TOKEN = Symbol('token')
 
 /**********************************************************************************/
 /*                                                                                */
@@ -28,7 +36,7 @@ type Variable<TValueDefault, TTOptionsDefault = unknown, TProperties = {}> = <
   const TValue extends TValueDefault,
   const TTOptions extends TTOptionsDefault
 >(
-  value: TValue,
+  value: TValue | Atom<TValue>,
   options?: Partial<TTOptions>
 ) => Token<TValue>
 
@@ -68,29 +76,89 @@ export type UniformProxy = {
   samplerCube: Variable<Float32Array, Sampler2DOptions>
 }
 
-/**********************************************************************************/
-/*                                                                                */
-/*                                    OBSERVABLE                                  */
-/*                                                                                */
-/**********************************************************************************/
-
-const createObservable = <T>(getValue: () => T) => {
-  const subscriptions = new ReferenceCount<(value: T) => void>()
-  const update = () => subscriptions.forEach((callback) => callback(getValue()))
-  const subscribe = (callback: (value: T) => void) => {
-    subscriptions.add(callback)
-    update()
-    return () => subscriptions.delete(callback)
-  }
-  return {
-    subscribe,
-    update,
-  }
+export type Token<T = Float32Array, TLocation = WebGLUniformLocation | number> = {
+  [$TOKEN]: 'token'
+  compile: (name: string) => string | undefined
+  bind: (options: { gl: GL; virtualProgram: VirtualProgram; location: TLocation }) => Token<T, TLocation>
+  getLocation: (options: { gl: GL; program: WebGLProgram; name: string }) => TLocation
+  set: Setter<T>
+  get: Accessor<T>
+  update: (options: { gl: GL; virtualProgram: VirtualProgram; location: TLocation }) => void
+  subscribe: (callback: (value: T) => void) => () => void
 }
 
 /**********************************************************************************/
 /*                                                                                */
-/*                                      UNIFORM                                   */
+/*                                       ATOM                                     */
+/*                                                                                */
+/**********************************************************************************/
+
+const $ATOM = Symbol('atom')
+export type Atom<T = any> = {
+  [$ATOM]: true
+  bind: (options: { gl: GL; virtualProgram: VirtualProgram }, callback?: () => void | boolean) => void
+  set: Setter<T>
+  get: Accessor<T>
+  subscribe: (callback: (value: T) => void) => () => void
+}
+
+export const atom = <T>(value: T) => {
+  const cache = new Set()
+  const updateHandlers: (() => void)[] = []
+
+  const get = () => value
+
+  const subscriptions = new ReferenceCount<(value: T) => void>()
+  const notify = () => {
+    const value = get()
+    subscriptions.forEach((callback) => callback(value))
+  }
+  const subscribe = (callback: (value: T) => void) => {
+    subscriptions.add(callback)
+    return () => subscriptions.delete(callback)
+  }
+
+  const atom: Atom<T> = {
+    [$ATOM]: true,
+    bind: ({ gl, virtualProgram }, callback) => {
+      if (cache.has(virtualProgram)) return
+      cache.add(virtualProgram)
+      updateHandlers.push(() => {
+        if (callback?.() === false) return
+        if (!gl.isPending) gl.requestRender()
+      })
+    },
+    get,
+    set: (_value) => {
+      value = typeof _value === 'function' ? _value(value) : _value
+      for (let i = 0; i < updateHandlers.length; i++) {
+        updateHandlers[i]!()
+      }
+      notify()
+    },
+    subscribe,
+  }
+
+  return atom
+}
+
+export const isAtom = <T = any>(value: any): value is Atom<T> => typeof value === 'object' && $ATOM in value
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                   SUBSCRIBE                                    */
+/*                                                                                */
+/**********************************************************************************/
+
+export const effect = (callback: () => void, dependencies: (Atom | Token | BufferToken)[]) => {
+  const cleanups = dependencies.map((dependency) => dependency.subscribe(callback))
+  callback()
+  return () => cleanups.forEach((cleanup) => cleanup())
+}
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                    UNIFORM                                     */
 /*                                                                                */
 /**********************************************************************************/
 
@@ -114,38 +182,25 @@ export const uniform = new Proxy({} as UniformProxy, {
   get(target, type: string) {
     return (...[value, options]: UniformParameters) => {
       const functionName = uniformDataTypeToFunctionName(type)
-      const getValue = () => value
-      const onUpdates: (() => void)[] = []
-      const virtualPrograms = new Set<VirtualProgram>()
+      const { bind, get, subscribe, set } = isAtom(value) ? value : atom(value)
 
-      const observable = createObservable(getValue)
-
-      const token: Token<typeof value> = {
-        subscribe: observable.subscribe,
-        set: (_value) => {
-          value = typeof _value === 'function' ? _value(value) : _value
-          for (let i = 0; i < onUpdates.length; i++) {
-            onUpdates[i]!()
-          }
-          observable.update()
-        },
-        get value() {
-          return getValue()
-        },
+      const token: Token<Exclude<typeof value, Atom>> = {
+        [$TOKEN]: 'token',
+        get,
+        set,
+        subscribe,
         compile: (name: string) => `uniform ${type} ${name};`,
         getLocation: ({ gl, program, name }) => gl.ctx.getUniformLocation(program, name)!,
-        initialize: ({ gl, virtualProgram, location }) => {
-          if (virtualPrograms.has(virtualProgram)) return
-          virtualPrograms.add(virtualProgram)
-          const uniform = virtualProgram.registerUniform(location, getValue)
-          onUpdates.push(() => {
-            if (uniform.dirty) return
+        bind: (options) => {
+          const uniform = options.virtualProgram.registerUniform(options.location, get)
+          bind(options, () => {
+            if (uniform.dirty) return false
             uniform.dirty = true
-            if (!gl.isPending) gl.requestRender()
           })
+          return token
         },
         update: ({ gl, virtualProgram, location }) => {
-          const uniform = virtualProgram.registerUniform(location, getValue)
+          const uniform = virtualProgram.registerUniform(location, get)
 
           if (uniform.value === value && !uniform.dirty) {
             return
@@ -222,50 +277,40 @@ export type AttributeReturnType = ReturnType<ValueOf<AttributeProxy>>
 export const attribute = new Proxy({} as AttributeProxy, {
   get(_, type: keyof AttributeProxy) {
     return (...[value, _options]: AttributeParameters): Token => {
-      const virtualPrograms = new Set<VirtualProgram>()
-      const onUpdates: (() => void)[] = []
       const size = dataTypeToSize(type)
-      const getValue = () => value
-      const observable = createObservable(getValue)
 
-      const token: Token = {
+      const { get, set, subscribe, bind } = isAtom(value) ? value : atom(value)
+
+      const token: Token<typeof value> = {
+        [$TOKEN]: 'token',
         compile: (name) => `in ${type} ${name};`,
         getLocation: ({ gl, program, name }) => gl.ctx.getAttribLocation(program, name)!,
-        get value() {
-          return value
-        },
-        set: (_value) => {
-          value = typeof _value === 'function' ? _value(value) : _value
-          for (let i = 0; i < onUpdates.length; i++) {
-            onUpdates[i]!()
-          }
-          observable.update()
-        },
-        subscribe: observable.subscribe,
-        initialize: ({ gl, virtualProgram, location }) => {
-          if (virtualPrograms.has(virtualProgram)) return
-          virtualPrograms.add(virtualProgram)
-          onUpdates.push(() => {
-            virtualProgram.dirtyAttribute(location as number)
-            if (!gl.isPending) gl.requestRender()
+        get,
+        set,
+        subscribe,
+        bind: (options) => {
+          bind(options, () => {
+            options.virtualProgram.dirtyAttribute(options.location as number)
           })
+          return token
         },
         update: ({ gl, virtualProgram, location }) => {
-          const buffer = virtualProgram.registerBuffer(value, {
+          const buffer = virtualProgram.registerBuffer(get(), {
             usage: 'STATIC_DRAW',
             target: 'ARRAY_BUFFER',
           })
-          if (buffer.dirty || !virtualProgram.checkAttribute(location as number, value)) {
+
+          if (buffer.dirty || !virtualProgram.checkAttribute(location as number, get())) {
             gl.ctx.bindBuffer(gl.ctx.ARRAY_BUFFER, buffer.value)
             if (buffer.dirty) {
-              gl.ctx.bufferData(gl.ctx.ARRAY_BUFFER, value, gl.ctx.STATIC_DRAW)
+              gl.ctx.bufferData(gl.ctx.ARRAY_BUFFER, get(), gl.ctx.STATIC_DRAW)
               buffer.dirty = false
             }
           } else {
             log('early return attribute')
             return
           }
-          virtualProgram.setAttribute(location as number, value)
+          virtualProgram.setAttribute(location as number, get())
 
           gl.ctx.vertexAttribPointer(location as number, size, gl.ctx.FLOAT, false, 0, 0)
           gl.ctx.enableVertexAttribArray(location as number)
@@ -306,36 +351,39 @@ export type BufferOptions = {
   usage: BufferUsage
 }
 
-export const buffer = (value: Float32Array, _options?: BufferOptions): BufferToken => {
+export type BufferToken<T = Float32Array> = {
+  [$TOKEN]: 'buffer'
+  bind: (options: { gl: GL; virtualProgram: VirtualProgram }) => BufferToken<T>
+  set: Setter<T>
+  get: Accessor<T>
+  subscribe: (callback: (value: T) => void) => () => void
+  update: (options: { gl: GL; virtualProgram: VirtualProgram }) => BufferToken<T>
+}
+
+export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: BufferOptions): BufferToken<T> => {
   const options: BufferOptions = {
     target: 'ARRAY_BUFFER',
     usage: 'STATIC_DRAW',
     ..._options,
   }
 
-  const gls = new Set<GL>()
-  const onUpdates: (() => void)[] = []
+  const { get, subscribe, set, bind } = isAtom<T>(value) ? value : atom(value)
 
-  const token: BufferToken = {
-    set: (_value) => {
-      value = typeof _value === 'function' ? _value(value) : _value
-      for (let i = 0; i < onUpdates.length; i++) {
-        onUpdates[i]!()
-      }
-    },
-    initialize: ({ gl }) => {
-      if (!gls.has(gl)) {
-        gls.add(gl)
-        onUpdates.push(() => !gl.isPending && gl.requestRender())
-      }
+  const token: BufferToken<T> = {
+    [$TOKEN]: 'buffer',
+    get,
+    set,
+    subscribe,
+    bind: (options) => {
+      bind(options)
       return token
     },
     update: ({ gl, virtualProgram }) => {
-      const buffer = virtualProgram.registerBuffer(value, options)
+      const buffer = virtualProgram.registerBuffer(get(), options)
       if (buffer.dirty) {
         gl.ctx.bindBuffer(gl.ctx[options.target], buffer.value)
         if (buffer.dirty) {
-          gl.ctx.bufferData(gl.ctx[options.target], value, gl.ctx[options.usage])
+          gl.ctx.bufferData(gl.ctx[options.target], get(), gl.ctx[options.usage])
           buffer.dirty = false
         }
       } else {
@@ -347,3 +395,14 @@ export const buffer = (value: Float32Array, _options?: BufferOptions): BufferTok
 
   return token
 }
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                       UTILS                                    */
+/*                                                                                */
+/**********************************************************************************/
+
+export const isToken = (value: any): value is Token =>
+  typeof value === 'object' && $TOKEN in value && value[$TOKEN] === 'token'
+export const isBufferToken = <T>(value: any): value is BufferToken<T> =>
+  typeof value === 'object' && $TOKEN in value && value[$TOKEN] === 'buffer'

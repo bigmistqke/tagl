@@ -202,19 +202,19 @@ export const uniform = new Proxy({} as UniformProxy, {
         update: ({ gl, virtualProgram, location }) => {
           const uniform = virtualProgram.registerUniform(location, get)
 
-          if (uniform.value === value && !uniform.dirty) {
+          if (uniform.value === get() && !uniform.dirty) {
             return
           }
 
           uniform.dirty = false
-          uniform.value = value
+          uniform.value = get()
 
           if (type.includes('mat')) {
             // @ts-expect-error
-            gl.ctx[functionName](location, false, value)
+            gl.ctx[functionName](location, false, get())
           } else {
             // @ts-expect-error
-            gl.ctx[functionName](location, value)
+            gl.ctx[functionName](location, get())
           }
         },
       }

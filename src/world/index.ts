@@ -6,109 +6,17 @@ import { DequeMap } from '../core/data-structures'
 import { Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, isToken } from '../core/tokens'
 import { Mat4, Vec3 } from '../core/types'
 
-/**********************************************************************************/
-/*                                                                                */
-/*                                      CONTEXT                                   */
-/*                                                                                */
-/**********************************************************************************/
-
-const createContext = <TContext>(_context?: TContext) => {
-  let context = _context
-  return {
-    execute: <T>(_context: TContext, callback: () => T): T => {
-      context = _context
-      const result = callback()
-      context = undefined
-      return result
-    },
-    use: () => {
-      if (!context) throw 'context is undefined!'
-      return context
-    },
-  }
+export interface Object3D {
+  program: (api: Api) => Program
+  setParent: (parent: { matrix: Atom<mat4> | Token<mat4> }) => void
+  draw: () => void
+  update: () => void
 }
 
-/**********************************************************************************/
-/*                                                                                */
-/*                                      CONTEXT                                   */
-/*                                                                                */
-/**********************************************************************************/
-
-let context = createContext<ContextApi>()
-const useContext = context.use
-
-type ContextApi = {
+type Api = {
   gl: GL
   camera: Token<Mat4>
   perspective: Token<Mat4>
-  matrix: Token<Mat4>
-}
-
-/**********************************************************************************/
-/*                                                                                */
-/*                                       GROUP                                    */
-/*                                                                                */
-/**********************************************************************************/
-
-export type Group = {
-  add: (object3D: Object3D) => void
-  children: DequeMap<Object3D, Program>
-  draw: () => void
-  flag: () => void
-  matrix: Token<Mat4>
-  needsUpdate: boolean
-  remove: (object3D: Object3D) => void
-  update: () => void
-}
-export type Object3D = /* Group &  */ {
-  program: () => Program
-}
-export const createGroup = (options?: { matrix: Float32Array; children?: any[] }) => {
-  const parent = useContext()
-  const children = new DequeMap<Object3D, Program>()
-
-  let _matrix = options?.matrix || new Float32Array()
-  const matrix = uniform.mat4(mat4.add(_matrix, _matrix, parent.matrix.get()))
-
-  const api = {
-    ...parent,
-    matrix,
-  }
-
-  const group: Group = {
-    add: (object3D: Object3D) => {
-      context.execute(api, () => children.push(object3D, object3D.program()))
-      api.gl.requestRender()
-    },
-    children,
-    draw: () => children.forEach((child) => child.key.draw()),
-    flag: () => {
-      if (group.needsUpdate) return
-      group.needsUpdate = true
-      children.forEach((child) => child.key.flag())
-    },
-    matrix: {
-      ...matrix,
-      set: (value) => {
-        if (typeof value === 'function') {
-          matrix.set(value(_matrix))
-        } else {
-          matrix.set(value)
-        }
-        group.update()
-      },
-    },
-    needsUpdate: false,
-    update: () => {
-      children.forEach((child) => child.key.update())
-    },
-    remove: (object3D: Object3D) => {
-      children.remove(object3D)
-      api.gl.requestRender()
-    },
-  }
-
-  return group
 }
 
 /**********************************************************************************/
@@ -130,19 +38,25 @@ export const createScene = (canvas = document.createElement('canvas')) => {
 
   gl.onResize(() => perspective.set(getPerspective()))
 
-  const api: ContextApi = {
+  const api: Api = {
     gl,
     camera,
     perspective,
-    matrix,
   }
 
-  const group = context.execute(api, () => createGroup())
-  gl.setStack(group.children)
+  const children = new DequeMap<Object3D, Program>()
+
+  gl.setStack(children)
 
   return {
-    add: group.add,
-    remove: group.remove,
+    add: (object3D: Object3D) => {
+      children.push(object3D, object3D.program(api))
+      gl.requestRender()
+    },
+    remove: (object3D: Object3D) => {
+      children.remove(object3D)
+      gl.requestRender()
+    },
     camera,
     canvas,
     ...gl,
@@ -195,7 +109,6 @@ export type Shape = Object3D & {
 export const createShape = <TOptions extends ShapeOptions>(
   options: TOptions
 ): TOptions['indices'] extends never ? Shape : Shape & { indices: BufferToken<Uint16Array> } => {
-  // const group = createGroup(options)
   const color = uniform.vec3(options.color)
   const matrix = uniform.mat4(options.matrix)
   const vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
@@ -215,9 +128,7 @@ export const createShape = <TOptions extends ShapeOptions>(
     color,
     vertices,
     uv,
-    program: () => {
-      const { camera, perspective, gl } = useContext()
-
+    program: ({ camera, perspective, gl }: Api) => {
       const vertex = isShader(options.vertex)
         ? options.vertex
         : typeof options.vertex === 'function'

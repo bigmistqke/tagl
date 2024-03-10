@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite serve dev",
     "ts-types": "tsc",
-    "build:dev": "rimraf lib && tsup --watch",
+    "build:dev": "vite build ./dev",
     "build:prod": "rimraf dist && env NODE_ENV=production tsup",
     "build:watch": "tsup --watch",
     "lint:fix": "eslint ./src --ext .ts,.tsx --quiet --fix --ignore-path ./.gitignore",
@@ -33,7 +33,7 @@
   "type": "module",
   "dependencies": {
     "gl-matrix": "^3.4.3",
-    "typescript": "^4.7.2",
+    "typescript": "^5.4.0",
     "zeptoid": "^1.0.1"
   },
   "files": [

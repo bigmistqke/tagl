@@ -1,22 +1,15 @@
 import { mat4, vec3 } from 'gl-matrix'
 
 import { GL, Program, ShaderToken, attribute, createGL, glsl, isShader, uniform } from '../core'
-import { DequeMap } from '../core/data-structures'
 
 import { Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, isToken } from '../core/tokens'
 import { Mat4, Vec3 } from '../core/types'
 
 export interface Object3D {
-  program: (api: Api) => Program
-  setParent: (parent: { matrix: Atom<mat4> | Token<mat4> }) => void
-  draw: () => void
-  update: () => void
-}
-
-type Api = {
-  gl: GL
-  camera: Token<Mat4>
-  perspective: Token<Mat4>
+  add: (child: Object3D) => void
+  bind: (parent: Object3D | Scene) => void
+  matrix: Token<mat4>
+  parent: Scene | Object3D | undefined
 }
 
 /**********************************************************************************/
@@ -25,12 +18,20 @@ type Api = {
 /*                                                                                */
 /**********************************************************************************/
 
+type Scene = GL & {
+  add: (object3D: Object3D) => void
+  camera: Token<mat4>
+  matrix: Token<mat4>
+  perspective: Token<mat4>
+  remove: (object3D: Object3D) => void
+  stack: Program[]
+}
+
 export const createScene = (canvas = document.createElement('canvas')) => {
   const getPerspective = () =>
     mat4.perspective(mat4.create(), Math.PI / 2, canvas.clientWidth / canvas.clientHeight, 0, Infinity)
 
   const gl = createGL(canvas)
-  gl.autosize()
 
   const camera = uniform.mat4(mat4.create())
   const matrix = uniform.mat4(mat4.create())
@@ -38,29 +39,26 @@ export const createScene = (canvas = document.createElement('canvas')) => {
 
   gl.onResize(() => perspective.set(getPerspective()))
 
-  const api: Api = {
-    gl,
-    camera,
-    perspective,
-  }
+  const stack: Program[] = []
 
-  const children = new DequeMap<Object3D, Program>()
+  gl.setStack(stack)
 
-  gl.setStack(children)
-
-  return {
-    add: (object3D: Object3D) => {
-      children.push(object3D, object3D.program(api))
-      gl.requestRender()
-    },
-    remove: (object3D: Object3D) => {
-      children.remove(object3D)
-      gl.requestRender()
-    },
-    camera,
-    canvas,
+  const scene: Scene = {
     ...gl,
+    add: (object3D: Object3D) => {
+      object3D.bind(scene)
+      gl.requestRender()
+    },
+    stack,
+    camera,
+    matrix,
+    perspective,
+    remove: (object3D: Object3D) => {
+      gl.requestRender()
+    },
   }
+
+  return scene
 }
 
 /**********************************************************************************/
@@ -81,8 +79,8 @@ type ShapeOptionsShader =
     }) => ShaderToken)
 
 type ShapeOptionsBase = {
-  matrix: Mat4
-  color: Vec3
+  matrix: Mat4 | Token<Mat4> | Atom<Mat4>
+  color: Vec3 | Atom<Vec3>
   vertices: Float32Array | Token<Float32Array> | Atom<Float32Array>
   uv: Float32Array | Token<Float32Array> | Atom<Float32Array>
   vertex?: ShapeOptionsShader
@@ -106,10 +104,20 @@ export type Shape = Object3D & {
   uv: Token<Float32Array>
 }
 
+const getScene = (object: Object3D | Scene): Scene | undefined => {
+  if ('parent' in object) {
+    if (object.parent) return getScene(object.parent)
+    else console.info('ancestor not connected to root')
+  } else {
+    return object
+  }
+}
+
 export const createShape = <TOptions extends ShapeOptions>(
   options: TOptions
 ): TOptions['indices'] extends never ? Shape : Shape & { indices: BufferToken<Uint16Array> } => {
   const color = uniform.vec3(options.color)
+  const localMatrix = uniform.mat4(options.matrix)
   const matrix = uniform.mat4(options.matrix)
   const vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
   const uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
@@ -123,40 +131,60 @@ export const createShape = <TOptions extends ShapeOptions>(
         })
     : undefined
 
-  const shape = {
-    matrix,
+  const cache = new Map<Scene, Program>()
+  const createProgram = (scene: Scene) => {
+    const cached = cache.get(scene)
+    if (cached) return cached
+
+    const { camera, perspective, createProgram } = scene
+    const vertex = isShader(options.vertex)
+      ? options.vertex
+      : typeof options.vertex === 'function'
+      ? options.vertex({ camera, perspective, color, vertices, matrix: localMatrix, uv })
+      : glsl`#version 300 es
+          precision highp float;
+          void main(void) {
+            gl_Position = ${perspective} * ${camera} * ${localMatrix} * vec4(${vertices} * 0.1, 1);
+            gl_PointSize = 5.;
+          }`
+
+    const fragment = isShader(options.fragment)
+      ? options.fragment
+      : typeof options.fragment === 'function'
+      ? options.fragment({ camera, perspective, color, vertices, matrix: localMatrix, uv })
+      : glsl`#version 300 es
+          precision highp float;
+          out vec4 color;
+          void main(void) {
+            color = vec4(${color}, 1.);
+          }`
+
+    const program = createProgram(
+      indicesBuffer ? { vertex, fragment, indices: indicesBuffer } : { vertex, fragment, count: options.count! }
+    )
+
+    cache.set(scene, program)
+
+    return program
+  }
+
+  const shape: Shape = {
+    add: (child: Object3D) => {
+      child.bind(shape)
+    },
+    matrix: localMatrix,
     color,
     vertices,
     uv,
-    program: ({ camera, perspective, gl }: Api) => {
-      const vertex = isShader(options.vertex)
-        ? options.vertex
-        : typeof options.vertex === 'function'
-        ? options.vertex({ camera, perspective, color, vertices, matrix: /* group. */ matrix, uv })
-        : glsl`#version 300 es
-            precision highp float;
-            out vec2 uv;  
-            void main(void) {
-              uv = ${uv};
-              gl_Position = ${perspective} * ${camera} * ${matrix} *vec4(${vertices} * 0.1, 1);
-              gl_PointSize = 5.;
-            }`
-
-      const fragment = isShader(options.fragment)
-        ? options.fragment
-        : typeof options.fragment === 'function'
-        ? options.fragment({ camera, perspective, color, vertices, matrix, uv })
-        : glsl`#version 300 es
-            precision highp float;
-            out vec4 color;
-            in vec2 uv;
-            void main(void) {
-              color = vec4(${color}, 1.);
-            }`
-
-      return gl.createProgram(
-        indicesBuffer ? { vertex, fragment, indices: indicesBuffer } : { vertex, fragment, count: options.count! }
-      )
+    parent: undefined,
+    bind: (parent) => {
+      shape.parent = parent
+      parent.matrix.subscribe((parentMatrix) => matrix.set(mat4.add(matrix.get(), localMatrix.get(), parentMatrix)))
+      matrix.set(mat4.add(matrix.get(), localMatrix.get(), parent.matrix.get()))
+      const scene = getScene(parent)
+      if (!scene) return
+      scene.stack.push(createProgram(scene))
+      scene.requestRender()
     },
   }
 

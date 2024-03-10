@@ -14,7 +14,7 @@ import {
   Vec3,
   Vec4,
 } from './types'
-import { dataTypeToSize, log, uniformDataTypeToFunctionName } from './utils'
+import { dataTypeToSize, uniformDataTypeToFunctionName } from './utils'
 import { VirtualProgram } from './virtualization/virtual-program'
 
 /**********************************************************************************/
@@ -319,7 +319,6 @@ export const attribute = new Proxy({} as AttributeProxy, {
                 buffer.dirty = false
               }
             } else {
-              log('early return attribute')
               return
             }
             virtualProgram.setAttribute(location as number, get())
@@ -398,15 +397,14 @@ export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: Bu
       },
       update: ({ gl, virtualProgram }) => {
         const buffer = virtualProgram.registerBuffer(get(), options)
+
+        // NOTE: maybe we can prevent having to do unnecessary binds here?
+        gl.ctx.bindBuffer(gl.ctx[options.target], buffer.value)
         if (buffer.dirty) {
-          gl.ctx.bindBuffer(gl.ctx[options.target], buffer.value)
-          if (buffer.dirty) {
-            gl.ctx.bufferData(gl.ctx[options.target], get(), gl.ctx[options.usage])
-            buffer.dirty = false
-          }
-        } else {
-          log('early return attribute')
+          gl.ctx.bufferData(gl.ctx[options.target], get(), gl.ctx[options.usage])
+          buffer.dirty = false
         }
+
         return token
       },
     },

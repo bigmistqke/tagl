@@ -23,6 +23,7 @@ export type GL = {
   ctx: WebGL2RenderingContext
   setStack(...programs: (Program | Program[] | DequeMap<any, Program>)[]): void
   isPending: boolean
+  scheduledRender: boolean
   requestRender: () => void
   createProgram: (options: ProgramOptions) => Program
   onLoop: (callback: (now: number) => void) => () => void
@@ -53,7 +54,10 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
     if (gl.isPending) render()
   }
 
-  const render = () => {
+  const render = async () => {
+    gl.isPending = false
+    gl.scheduledRender = false
+
     for (let i = 0; i < stack.length; i++) {
       const element = stack[i]
       if (element instanceof DequeMap) {
@@ -64,7 +68,8 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
         element!.draw()
       }
     }
-    gl.isPending = false
+
+    if (gl.scheduledRender) render()
   }
 
   const onResizeCallbacks = new Set<(canvas: HTMLCanvasElement) => void>()
@@ -92,8 +97,12 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
       stack = programs
     },
     isPending: false,
+    scheduledRender: false,
     requestRender: () => {
-      if (gl.isPending) return
+      if (gl.isPending) {
+        gl.scheduledRender = true
+        return
+      }
       gl.isPending = true
       if (looping) return
       requestIdleCallback(render)
@@ -146,6 +155,7 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
             vertex.update(vertexConfig)
             fragment.update(fragmentConfig)
 
+            indicesBuffer.__.bind(config)
             indicesBuffer.__.update(config)
 
             gl.ctx.drawElements(gl.ctx.TRIANGLES, indicesBuffer.get().length, gl.ctx.UNSIGNED_SHORT, 0)
@@ -155,7 +165,7 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
         }
       } else {
         if (typeof count === 'object') {
-          count.bind(config)
+          count.__.bind(config)
         }
         return {
           draw: () => {

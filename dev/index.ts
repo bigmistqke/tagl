@@ -1,4 +1,5 @@
-import { mat4 } from 'gl-matrix'
+import { mat4, vec3 } from 'gl-matrix'
+import { atom } from 'src/core/tokens'
 import { createDisc, createScene } from 'world'
 
 const canvas = document.createElement('canvas')
@@ -7,8 +8,10 @@ document.body.appendChild(canvas)
 const scene = createScene(canvas)
 scene.autosize()
 
+const color = atom(vec3.fromValues(1, 0, 0))
+
 const disc2 = createDisc({
-  color: new Float32Array([1, 0, 0]),
+  color: vec3.fromValues(1, 0, 0),
   matrix: (() => {
     const matrix = mat4.create()
     mat4.translate(matrix, matrix, [0, 1, 0])
@@ -28,24 +31,40 @@ const colors = [
 let count = 0
 
 setTimeout(() => {
-  const disc = createDisc({
-    color: new Float32Array([1, 0, 0]),
+  const disc3 = createDisc({
+    color: vec3.fromValues(0, 1, 0),
     matrix: mat4.create(),
     radius: 5,
-    segments: 5,
+    segments: 4,
   })
-  disc2.add(disc)
+  scene.add(disc3)
+
+  setTimeout(() => {
+    const matrix = mat4.create()
+    mat4.translate(matrix, matrix, [0, 0, -1])
+    const disc4 = createDisc({
+      color: vec3.fromValues(0, -1, 0),
+      matrix: mat4.create(),
+      radius: 2,
+      segments: 5,
+    })
+    scene.add(disc4)
+
+    setTimeout(() => {
+      const matrix = mat4.create()
+      mat4.translate(matrix, matrix, [0, -1, 0])
+      const disc4 = createDisc({
+        color: vec3.fromValues(0, -1, 0),
+        matrix: mat4.create(),
+        radius: 2,
+        segments: 5,
+      })
+      scene.add(disc4)
+    }, 1000)
+  }, 1000)
 }, 1000)
 
 setTimeout(() => {
   count++
-}, 0)
-
-/* scene.onLoop((time) => {
-  disc.matrix.set((matrix) => {
-    mat4.rotateX(matrix, matrix, 0.01 * Math.sin(time / 1000))
-    mat4.rotateY(matrix, matrix, 0.01)
-    return matrix
-  })
-  disc.radius.set((Math.sin(time / 1000) + 1) * 2 + 2)
-}) */
+  disc2.color.set((color) => vec3.set(color, ...colors[count % 2]))
+}, 2000)

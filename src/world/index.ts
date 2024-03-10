@@ -164,8 +164,9 @@ export const createShape = <TOptions extends ShapeOptions>(
     return {
       ...shape,
       indices: indicesBuffer!,
-    }
+    } as Shape & { indices: BufferToken<Uint16Array> }
   }
+  // @ts-expect-error
   return shape
 }
 

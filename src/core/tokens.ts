@@ -138,7 +138,7 @@ export const atom = <T>(value: T) => {
       } else {
         value = _value
       }
-      notify()
+      if (!config.equals) notify()
     },
     subscribe,
     __: {

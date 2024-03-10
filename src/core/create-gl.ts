@@ -9,27 +9,7 @@ export type Program = {
   program: WebGLProgram
 }
 
-type ProgramOptions = {
-  vertex: ReturnType<typeof glsl>
-  fragment: ReturnType<typeof glsl>
-} & (
-  | { count: number | Atom<number>; indices?: never }
-  | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
-)
-
-export type GL = {
-  autosize: () => void
-  onResize: (callback: (canvas: HTMLCanvasElement) => void) => () => void
-  ctx: WebGL2RenderingContext
-  setStack(...programs: (Program | Program[] | DequeMap<any, Program>)[]): void
-  isPending: boolean
-  scheduledRender: boolean
-  requestRender: () => void
-  createProgram: (options: ProgramOptions) => Program
-  onLoop: (callback: (now: number) => void) => () => void
-}
-
-export const createGL = (canvas: HTMLCanvasElement): GL => {
+export const createGL = (canvas: HTMLCanvasElement) => {
   const ctx = canvas.getContext('webgl2')
 
   let stack: (Program | Program[] | DequeMap<any, Program>)[] = []
@@ -74,7 +54,17 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
 
   const onResizeCallbacks = new Set<(canvas: HTMLCanvasElement) => void>()
 
-  const gl: GL = {
+  const gl: {
+    autosize: () => void
+    onResize: (callback: (canvas: HTMLCanvasElement) => void) => () => void
+    ctx: WebGL2RenderingContext
+    setStack(...programs: (Program | Program[] | DequeMap<any, Program>)[]): void
+    isPending: boolean
+    scheduledRender: boolean
+    requestRender: () => void
+    createProgram: (options: ProgramOptions) => Program
+    onLoop: (callback: (now: number) => void) => () => void
+  } = {
     autosize: () => {
       const resizeObserver = new ResizeObserver(() => {
         if (canvas instanceof OffscreenCanvas) {
@@ -107,7 +97,18 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
       if (looping) return
       requestIdleCallback(render)
     },
-    createProgram: ({ vertex, fragment, count, indices }: ProgramOptions) => {
+    createProgram: ({
+      vertex,
+      fragment,
+      count,
+      indices,
+    }: {
+      vertex: ReturnType<typeof glsl>
+      fragment: ReturnType<typeof glsl>
+    } & (
+      | { count: number | Atom<number>; indices?: never }
+      | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
+    )) => {
       const gl_record = glRegistry.register(gl.ctx)
 
       const { program, locations } = ProgramRegistry.getInstance(gl).register(vertex, fragment).value as ProgramRecord
@@ -193,10 +194,12 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
         requestAnimationFrame(loop)
       }
       return () => {
-        // onLoops.splice(onLoops.indexOf(callback), -1)
+        onLoops.splice(onLoops.indexOf(callback), -1)
       }
     },
   }
 
   return gl
 }
+
+export type GL = ReturnType<typeof createGL>

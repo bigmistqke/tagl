@@ -3,7 +3,7 @@ import { Token } from './tokens'
 export const compile = (strings: TemplateStringsArray, tokens: Token[], names: string[]) => {
   const code = [...strings.flatMap((string, index) => [string, names[index]!])].join('')
 
-  const variables = Array.from(new Set(tokens.flatMap((token, index) => token?.__.compile(names[index]!)))).join('\n')
+  const variables = Array.from(new Set(tokens.flatMap((token, index) => token?.__.template(names[index]!)))).join('\n')
 
   const precision = code.match(/precision.*;/)?.[0]
   if (precision) {

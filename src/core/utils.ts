@@ -17,8 +17,6 @@ export const log = (...args: any) => {
 /*                                                                                */
 /**********************************************************************************/
 
-export const isMatrix = (dataType: string): dataType is 'mat2' | 'mat3' | 'mat4' => dataType.includes('mat')
-
 export const dataTypeToSize = (dataType: string) => {
   if (dataType.includes('vec')) {
     return +dataType.slice(-1)

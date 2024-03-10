@@ -83,7 +83,7 @@ export type Token<T = Float32Array, TLocation = WebGLUniformLocation | number> =
   subscribe: (callback: (value: T) => void) => () => void
   __: {
     bind: (options: { gl: GL; virtualProgram: VirtualProgram; location: TLocation }) => Token<T, TLocation>
-    compile: (name: string) => string | undefined
+    template: (name: string) => string | undefined
     getLocation: (options: { gl: GL; program: WebGLProgram; name: string }) => TLocation
     update: (options: { gl: GL; virtualProgram: VirtualProgram; location: TLocation }) => void
   }
@@ -138,7 +138,9 @@ export const atom = <T>(value: T) => {
       } else {
         value = _value
       }
-      if (!config.equals) notify()
+      if (!config.equals) {
+        notify()
+      }
     },
     subscribe,
     __: {
@@ -209,7 +211,7 @@ export const uniform = new Proxy({} as UniformProxy, {
             })
             return token
           },
-          compile: (name: string) => `uniform ${type} ${name};`,
+          template: (name: string) => `uniform ${type} ${name};`,
           getLocation: ({ gl, program, name }) => gl.ctx.getUniformLocation(program, name)!,
           update: ({ gl, virtualProgram, location }) => {
             const uniform = virtualProgram.registerUniform(location, get)
@@ -326,7 +328,7 @@ export const attribute = new Proxy({} as AttributeProxy, {
             gl.ctx.vertexAttribPointer(location as number, size, gl.ctx.FLOAT, false, 0, 0)
             gl.ctx.enableVertexAttribArray(location as number)
           },
-          compile: (name) => `in ${type} ${name};`,
+          template: (name) => `in ${type} ${name};`,
           getLocation: ({ gl, program, name }) => gl.ctx.getAttribLocation(program, name)!,
         },
       }

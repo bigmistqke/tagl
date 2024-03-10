@@ -120,16 +120,19 @@ export const createShape = <TOptions extends ShapeOptions>(
   options: TOptions
 ): TOptions['indices'] extends never ? Shape : Shape & { indices: BufferToken<Uint16Array> } => {
   const color = uniform.vec3(options.color)
+  const vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
+  const uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
+
   const matrix = uniform.mat4(mat4.clone('get' in options.matrix ? options.matrix.get() : options.matrix))
   const localMatrix =
     $TYPE in options.matrix && options.matrix[$TYPE] === 'token' ? options.matrix : uniform.mat4(options.matrix)
-  localMatrix.subscribe((localMatrix) => {
+
+  const updateMatrix = () => {
     const parentMatrix = shape.__.parent?.matrix
     if (!parentMatrix) return
-    matrix.set((matrix) => mat4.multiply(matrix, parentMatrix.get(), localMatrix))
-  })
-  const vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
-  const uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
+    matrix.set((matrix) => mat4.multiply(matrix, parentMatrix.get(), localMatrix.get()))
+  }
+  localMatrix.subscribe(updateMatrix)
 
   const indicesBuffer = options.indices
     ? isBufferToken<Uint16Array>(options.indices)
@@ -195,15 +198,12 @@ export const createShape = <TOptions extends ShapeOptions>(
     bind: (parent) => {
       parent.__.children.add(shape)
       shape.__.parent = parent
-      current.cleanup = parent.matrix.subscribe((parentMatrix) => {
-        matrix.set((matrix) => mat4.multiply(matrix, parentMatrix, localMatrix.get()))
-      })
-
-      matrix.set((matrix) => mat4.multiply(matrix, parent.matrix.get(), localMatrix.get()))
-
+      current.cleanup = parent.matrix.subscribe(updateMatrix)
+      updateMatrix()
       traverse(shape, (object3D) => object3D.__.mount())
     },
     unbind: () => {
+      shape.__.unmount()
       traverse(shape, (object3D) => object3D.__.unmount())
 
       shape.__.parent?.__.children.delete(shape)
@@ -211,18 +211,6 @@ export const createShape = <TOptions extends ShapeOptions>(
 
       if (current.cleanup) {
         current.cleanup()
-      }
-
-      if (current.scene) {
-        current.scene.stack.set((stack, flags) => {
-          const index = stack.findIndex((program) => program === current.program)
-          if (index !== -1) {
-            stack.splice(index, 1)
-          } else {
-            flags.equals = true
-          }
-          return stack
-        })
       }
 
       current.scene = undefined
@@ -236,10 +224,10 @@ export const createShape = <TOptions extends ShapeOptions>(
         if (!shape.__.parent) return
         current.scene = getScene(shape.__.parent)
         if (!current.scene) return
-        current.program = createProgram(current.scene)
-        if (!current.program) return
+        const currentProgram = createProgram(current.scene)
+        current.program = currentProgram
         current.scene.stack.set((stack) => {
-          stack.push(current.program!)
+          stack.push(currentProgram)
           return stack
         })
       },
@@ -247,8 +235,10 @@ export const createShape = <TOptions extends ShapeOptions>(
         if (!shape.__.parent) return
         current.scene = getScene(shape.__.parent)
         if (!current.scene) return
+        const currentProgram = current.program
+        if (!currentProgram) return
         current.scene.stack.set((stack, flags) => {
-          const index = stack.findIndex((program) => program === current.program)
+          const index = stack.findIndex((program) => program === currentProgram)
           if (index !== -1) {
             stack.splice(index, 1)
           } else {

@@ -21,7 +21,7 @@ export type GL = {
   autosize: () => void
   onResize: (callback: (canvas: HTMLCanvasElement) => void) => () => void
   ctx: WebGL2RenderingContext
-  setStack(...programs: (Program | DequeMap<any, Program>)[]): void
+  setStack(...programs: (Program | Program[] | DequeMap<any, Program>)[]): void
   isPending: boolean
   requestRender: () => void
   createProgram: (options: ProgramOptions) => Program
@@ -31,7 +31,7 @@ export type GL = {
 export const createGL = (canvas: HTMLCanvasElement): GL => {
   const ctx = canvas.getContext('webgl2')
 
-  let stack: (Program | DequeMap<any, Program>)[] = []
+  let stack: (Program | Program[] | DequeMap<any, Program>)[] = []
 
   if (!ctx) throw 'could not get context webgl2'
 
@@ -58,6 +58,8 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
       const element = stack[i]
       if (element instanceof DequeMap) {
         element.forEach((program) => program.value.draw())
+      } else if (Array.isArray(element)) {
+        element.forEach((program) => program.draw())
       } else {
         element!.draw()
       }
@@ -86,14 +88,15 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
       return () => onResizeCallbacks.delete(callback)
     },
     ctx,
-    setStack(...programs: (Program | DequeMap<any, Program>)[]) {
+    setStack(...programs: (Program | Program[] | DequeMap<any, Program>)[]) {
       stack = programs
     },
     isPending: false,
     requestRender: () => {
+      if (gl.isPending) return
       gl.isPending = true
       if (looping) return
-      requestAnimationFrame(render)
+      requestIdleCallback(render)
     },
     createProgram: ({ vertex, fragment, count, indices }: ProgramOptions) => {
       const gl_record = glRegistry.register(gl.ctx)
@@ -130,7 +133,7 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
                 target: 'ELEMENT_ARRAY_BUFFER',
                 usage: 'STATIC_DRAW',
               })
-        ).bind(config)
+        ).__.bind(config)
 
         return {
           draw: () => {
@@ -143,7 +146,7 @@ export const createGL = (canvas: HTMLCanvasElement): GL => {
             vertex.update(vertexConfig)
             fragment.update(fragmentConfig)
 
-            indicesBuffer.update(config)
+            indicesBuffer.__.update(config)
 
             gl.ctx.drawElements(gl.ctx.TRIANGLES, indicesBuffer.get().length, gl.ctx.UNSIGNED_SHORT, 0)
           },

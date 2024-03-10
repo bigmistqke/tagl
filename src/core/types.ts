@@ -75,7 +75,10 @@ export type BufferOptions = {
   usage: BufferUsage
 }
 
-export type Setter<T = Float32Array> = (value: T | ((value: T) => T)) => void
+type SetterControl = {
+  equals: boolean
+}
+export type Setter<T = Float32Array> = (value: T | ((value: T, control: SetterControl) => T)) => void
 export type GLProgramMemory = {
   buffers: BufferRegistry
   attributes: Map<string, WebGLBuffer>

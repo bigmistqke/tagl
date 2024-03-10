@@ -177,9 +177,15 @@ export const createShape = <TOptions extends ShapeOptions>(
     return program
   }
 
-  let cleanupSubscription: (() => void) | undefined
-  let currentProgram: Program | undefined
-  let currentScene: Scene | undefined
+  const current: {
+    cleanup: (() => void) | undefined
+    program: Program | undefined
+    scene: Scene | undefined
+  } = {
+    cleanup: undefined,
+    program: undefined,
+    scene: undefined,
+  }
 
   const shape: Shape = {
     color,
@@ -189,15 +195,13 @@ export const createShape = <TOptions extends ShapeOptions>(
     bind: (parent) => {
       parent.__.children.add(shape)
       shape.__.parent = parent
-      cleanupSubscription = parent.matrix.subscribe((parentMatrix) => {
+      current.cleanup = parent.matrix.subscribe((parentMatrix) => {
         matrix.set((matrix) => mat4.multiply(matrix, parentMatrix, localMatrix.get()))
       })
 
       matrix.set((matrix) => mat4.multiply(matrix, parent.matrix.get(), localMatrix.get()))
 
-      traverse(shape, (object3D) => {
-        object3D.__.mount()
-      })
+      traverse(shape, (object3D) => object3D.__.mount())
     },
     unbind: () => {
       traverse(shape, (object3D) => object3D.__.unmount())
@@ -205,13 +209,13 @@ export const createShape = <TOptions extends ShapeOptions>(
       shape.__.parent?.__.children.delete(shape)
       shape.__.parent = undefined
 
-      if (cleanupSubscription) {
-        cleanupSubscription()
-        cleanupSubscription = undefined
+      if (current.cleanup) {
+        current.cleanup()
       }
-      if (currentScene) {
-        currentScene.stack.set((stack, flags) => {
-          const index = stack.findIndex((program) => program === currentProgram)
+
+      if (current.scene) {
+        current.scene.stack.set((stack, flags) => {
+          const index = stack.findIndex((program) => program === current.program)
           if (index !== -1) {
             stack.splice(index, 1)
           } else {
@@ -219,30 +223,32 @@ export const createShape = <TOptions extends ShapeOptions>(
           }
           return stack
         })
-
-        currentScene = undefined
       }
+
+      current.scene = undefined
+      current.cleanup = undefined
+      current.program = undefined
     },
     __: {
       children: new Set(),
       parent: undefined,
       mount: () => {
         if (!shape.__.parent) return
-        currentScene = getScene(shape.__.parent)
-        if (!currentScene) return
-        currentProgram = createProgram(currentScene)
-        if (!currentProgram) return
-        currentScene.stack.set((stack) => {
-          stack.push(currentProgram!)
+        current.scene = getScene(shape.__.parent)
+        if (!current.scene) return
+        current.program = createProgram(current.scene)
+        if (!current.program) return
+        current.scene.stack.set((stack) => {
+          stack.push(current.program!)
           return stack
         })
       },
       unmount: () => {
         if (!shape.__.parent) return
-        currentScene = getScene(shape.__.parent)
-        if (!currentScene) return
-        currentScene.stack.set((stack, flags) => {
-          const index = stack.findIndex((program) => program === currentProgram)
+        current.scene = getScene(shape.__.parent)
+        if (!current.scene) return
+        current.scene.stack.set((stack, flags) => {
+          const index = stack.findIndex((program) => program === current.program)
           if (index !== -1) {
             stack.splice(index, 1)
           } else {

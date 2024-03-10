@@ -2,7 +2,7 @@ import { mat4, vec3 } from 'gl-matrix'
 
 import { GL, Program, ShaderToken, attribute, createGL, glsl, isShader, uniform } from '../core'
 
-import { Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, isToken } from '../core/tokens'
+import { $TYPE, Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, isToken } from '../core/tokens'
 import { Mat4, Vec3 } from '../core/types'
 import { traverse } from './utils'
 
@@ -28,7 +28,7 @@ type Scene = GL & {
   camera: Token<mat4>
   matrix: Token<mat4>
   perspective: Token<mat4>
-  stack: Program[]
+  stack: Atom<Program[]>
   __: {
     children: Set<Object3D>
   }
@@ -46,9 +46,10 @@ export const createScene = (canvas = document.createElement('canvas')) => {
 
   gl.onResize(() => perspective.set(getPerspective()))
 
-  const stack: Program[] = []
+  const stack = atom<Program[]>([])
 
-  gl.setStack(stack)
+  gl.setStack(stack.get())
+  stack.subscribe(() => gl.requestRender())
 
   const scene: Scene = {
     ...gl,
@@ -110,9 +111,8 @@ export type Shape = Object3D & {
 const getScene = (object: Object3D | Scene): Scene | undefined => {
   if ('parent' in object.__) {
     if (object.__.parent) return getScene(object.__.parent)
-    else console.info('ancestor not connected to root')
   } else {
-    return object
+    return object as Scene
   }
 }
 
@@ -120,8 +120,14 @@ export const createShape = <TOptions extends ShapeOptions>(
   options: TOptions
 ): TOptions['indices'] extends never ? Shape : Shape & { indices: BufferToken<Uint16Array> } => {
   const color = uniform.vec3(options.color)
-  const localMatrix = uniform.mat4(options.matrix)
-  const matrix = uniform.mat4(options.matrix)
+  const matrix = uniform.mat4(mat4.clone('get' in options.matrix ? options.matrix.get() : options.matrix))
+  const localMatrix =
+    $TYPE in options.matrix && options.matrix[$TYPE] === 'token' ? options.matrix : uniform.mat4(options.matrix)
+  localMatrix.subscribe((localMatrix) => {
+    const parentMatrix = shape.__.parent?.matrix
+    if (!parentMatrix) return
+    matrix.set((matrix) => mat4.multiply(matrix, parentMatrix.get(), localMatrix))
+  })
   const vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
   const uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
 
@@ -143,18 +149,18 @@ export const createShape = <TOptions extends ShapeOptions>(
     const vertex = isShader(options.vertex)
       ? options.vertex
       : typeof options.vertex === 'function'
-      ? options.vertex({ camera, perspective, color, vertices, matrix: localMatrix, uv })
+      ? options.vertex({ camera, perspective, color, vertices, matrix, uv })
       : glsl`#version 300 es
           precision highp float;
           void main(void) {
-            gl_Position = ${perspective} * ${camera} * ${localMatrix} * vec4(${vertices} * 0.1, 1);
+            gl_Position = ${perspective} * ${camera} * ${matrix} * vec4(${vertices} * 0.1, 1);
             gl_PointSize = 5.;
           }`
 
     const fragment = isShader(options.fragment)
       ? options.fragment
       : typeof options.fragment === 'function'
-      ? options.fragment({ camera, perspective, color, vertices, matrix: localMatrix, uv })
+      ? options.fragment({ camera, perspective, color, vertices, matrix, uv })
       : glsl`#version 300 es
           precision highp float;
           out vec4 color;
@@ -183,10 +189,11 @@ export const createShape = <TOptions extends ShapeOptions>(
     bind: (parent) => {
       parent.__.children.add(shape)
       shape.__.parent = parent
-      cleanupSubscription = parent.matrix.subscribe((parentMatrix) =>
-        matrix.set(mat4.add(matrix.get(), localMatrix.get(), parentMatrix))
-      )
-      matrix.set(mat4.add(matrix.get(), localMatrix.get(), parent.matrix.get()))
+      cleanupSubscription = parent.matrix.subscribe((parentMatrix) => {
+        matrix.set((matrix) => mat4.multiply(matrix, parentMatrix, localMatrix.get()))
+      })
+
+      matrix.set((matrix) => mat4.multiply(matrix, parent.matrix.get(), localMatrix.get()))
 
       traverse(shape, (object3D) => {
         object3D.__.mount()
@@ -203,11 +210,16 @@ export const createShape = <TOptions extends ShapeOptions>(
         cleanupSubscription = undefined
       }
       if (currentScene) {
-        const index = currentScene.stack.findIndex((program) => program === currentProgram)
-        if (index !== -1) {
-          currentScene.stack.splice(index, 1)
-        }
-        currentScene.requestRender()
+        currentScene.stack.set((stack, flags) => {
+          const index = stack.findIndex((program) => program === currentProgram)
+          if (index !== -1) {
+            stack.splice(index, 1)
+          } else {
+            flags.equals = true
+          }
+          return stack
+        })
+
         currentScene = undefined
       }
     },
@@ -219,18 +231,25 @@ export const createShape = <TOptions extends ShapeOptions>(
         currentScene = getScene(shape.__.parent)
         if (!currentScene) return
         currentProgram = createProgram(currentScene)
-        currentScene.stack.push(currentProgram)
-        currentScene.requestRender()
+        if (!currentProgram) return
+        currentScene.stack.set((stack) => {
+          stack.push(currentProgram!)
+          return stack
+        })
       },
       unmount: () => {
         if (!shape.__.parent) return
         currentScene = getScene(shape.__.parent)
         if (!currentScene) return
-        const index = currentScene.stack.findIndex((program) => program === currentProgram)
-        if (index !== -1) {
-          currentScene.stack.splice(index, 1)
-        }
-        currentScene.requestRender()
+        currentScene.stack.set((stack, flags) => {
+          const index = stack.findIndex((program) => program === currentProgram)
+          if (index !== -1) {
+            stack.splice(index, 1)
+          } else {
+            flags.equals = true
+          }
+          return stack
+        })
       },
     },
   }

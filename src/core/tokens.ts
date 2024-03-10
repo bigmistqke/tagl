@@ -23,7 +23,7 @@ import { VirtualProgram } from './virtualization/virtual-program'
 /*                                                                                */
 /**********************************************************************************/
 
-const $TYPE = Symbol('atom')
+export const $TYPE = Symbol('atom')
 
 /**********************************************************************************/
 /*                                                                                */

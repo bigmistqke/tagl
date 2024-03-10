@@ -7,14 +7,16 @@ import { Mat4, Vec3 } from '../core/types'
 import { traverse } from './utils'
 
 export interface Object3D {
+  /** local matrix */
   matrix: Token<mat4>
-  bind: (parent: Object3D | Scene) => void
+  bind: (parent: Object3D | Scene) => Object3D
   unbind: () => void
   __: {
     children: Set<Object3D>
     parent: Scene | Object3D | undefined
     mount: () => void
     unmount: () => void
+    matrix: Token<mat4>
   }
 }
 
@@ -24,6 +26,14 @@ export interface Object3D {
 /*                                                                                */
 /**********************************************************************************/
 
+const getScene = (object: Object3D | Scene): Scene | undefined => {
+  if ('parent' in object.__) {
+    if (object.__.parent) return getScene(object.__.parent)
+  } else {
+    return object as Scene
+  }
+}
+
 type Scene = GL & {
   camera: Token<mat4>
   matrix: Token<mat4>
@@ -31,6 +41,7 @@ type Scene = GL & {
   stack: Atom<Program[]>
   __: {
     children: Set<Object3D>
+    matrix: Token<mat4>
   }
 }
 
@@ -59,6 +70,7 @@ export const createScene = (canvas = document.createElement('canvas')) => {
     perspective,
     __: {
       children: new Set(),
+      matrix,
     },
   }
 
@@ -101,19 +113,12 @@ type ShapeOptionsIndices = ShapeOptionsBase & {
 }
 export type ShapeOptions = ShapeOptionsCount | ShapeOptionsIndices
 
-export type Shape = Object3D & {
+export interface Shape extends Object3D {
+  bind: (parent: Object3D | Scene) => Shape
   color: Token<Vec3>
   vertices: Token<Float32Array>
   matrix: Token<Mat4>
   uv: Token<Float32Array>
-}
-
-const getScene = (object: Object3D | Scene): Scene | undefined => {
-  if ('parent' in object.__) {
-    if (object.__.parent) return getScene(object.__.parent)
-  } else {
-    return object as Scene
-  }
 }
 
 export const createShape = <TOptions extends ShapeOptions>(
@@ -128,7 +133,7 @@ export const createShape = <TOptions extends ShapeOptions>(
     $TYPE in options.matrix && options.matrix[$TYPE] === 'token' ? options.matrix : uniform.mat4(options.matrix)
 
   const updateMatrix = () => {
-    const parentMatrix = shape.__.parent?.matrix
+    const parentMatrix = shape.__.parent?.__.matrix
     if (!parentMatrix) return
     matrix.set((matrix) => mat4.multiply(matrix, parentMatrix.get(), localMatrix.get()))
   }
@@ -198,9 +203,10 @@ export const createShape = <TOptions extends ShapeOptions>(
     bind: (parent) => {
       parent.__.children.add(shape)
       shape.__.parent = parent
-      current.cleanup = parent.matrix.subscribe(updateMatrix)
+      current.cleanup = parent.__.matrix.subscribe(updateMatrix)
       updateMatrix()
       traverse(shape, (object3D) => object3D.__.mount())
+      return shape
     },
     unbind: () => {
       shape.__.unmount()
@@ -220,6 +226,7 @@ export const createShape = <TOptions extends ShapeOptions>(
     __: {
       children: new Set(),
       parent: undefined,
+      matrix,
       mount: () => {
         if (!shape.__.parent) return
         current.scene = getScene(shape.__.parent)

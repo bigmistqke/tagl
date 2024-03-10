@@ -4,12 +4,18 @@ import { GL, Program, ShaderToken, attribute, createGL, glsl, isShader, uniform 
 
 import { Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, isToken } from '../core/tokens'
 import { Mat4, Vec3 } from '../core/types'
+import { traverse } from './utils'
 
 export interface Object3D {
+  matrix: Token<mat4>
   bind: (parent: Object3D | Scene) => void
   unbind: () => void
-  matrix: Token<mat4>
-  parent: Scene | Object3D | undefined
+  __: {
+    children: Set<Object3D>
+    parent: Scene | Object3D | undefined
+    mount: () => void
+    unmount: () => void
+  }
 }
 
 /**********************************************************************************/
@@ -23,6 +29,9 @@ type Scene = GL & {
   matrix: Token<mat4>
   perspective: Token<mat4>
   stack: Program[]
+  __: {
+    children: Set<Object3D>
+  }
 }
 
 export const createScene = (canvas = document.createElement('canvas')) => {
@@ -47,6 +56,9 @@ export const createScene = (canvas = document.createElement('canvas')) => {
     camera,
     matrix,
     perspective,
+    __: {
+      children: new Set(),
+    },
   }
 
   return scene
@@ -96,8 +108,8 @@ export type Shape = Object3D & {
 }
 
 const getScene = (object: Object3D | Scene): Scene | undefined => {
-  if ('parent' in object) {
-    if (object.parent) return getScene(object.parent)
+  if ('parent' in object.__) {
+    if (object.__.parent) return getScene(object.__.parent)
     else console.info('ancestor not connected to root')
   } else {
     return object
@@ -164,28 +176,28 @@ export const createShape = <TOptions extends ShapeOptions>(
   let currentScene: Scene | undefined
 
   const shape: Shape = {
-    add: (child: Object3D) => {
-      child.bind(shape)
-    },
-    matrix: localMatrix,
     color,
+    matrix: localMatrix,
     vertices,
     uv,
-    parent: undefined,
     bind: (parent) => {
-      shape.parent = parent
+      parent.__.children.add(shape)
+      shape.__.parent = parent
       cleanupSubscription = parent.matrix.subscribe((parentMatrix) =>
         matrix.set(mat4.add(matrix.get(), localMatrix.get(), parentMatrix))
       )
       matrix.set(mat4.add(matrix.get(), localMatrix.get(), parent.matrix.get()))
-      currentScene = getScene(parent)
-      if (!currentScene) return
-      currentProgram = createProgram(currentScene)
-      currentScene.stack.push(currentProgram)
-      currentScene.requestRender()
+
+      traverse(shape, (object3D) => {
+        object3D.__.mount()
+      })
     },
     unbind: () => {
-      shape.parent = undefined
+      traverse(shape, (object3D) => object3D.__.unmount())
+
+      shape.__.parent?.__.children.delete(shape)
+      shape.__.parent = undefined
+
       if (cleanupSubscription) {
         cleanupSubscription()
         cleanupSubscription = undefined
@@ -198,6 +210,28 @@ export const createShape = <TOptions extends ShapeOptions>(
         currentScene.requestRender()
         currentScene = undefined
       }
+    },
+    __: {
+      children: new Set(),
+      parent: undefined,
+      mount: () => {
+        if (!shape.__.parent) return
+        currentScene = getScene(shape.__.parent)
+        if (!currentScene) return
+        currentProgram = createProgram(currentScene)
+        currentScene.stack.push(currentProgram)
+        currentScene.requestRender()
+      },
+      unmount: () => {
+        if (!shape.__.parent) return
+        currentScene = getScene(shape.__.parent)
+        if (!currentScene) return
+        const index = currentScene.stack.findIndex((program) => program === currentProgram)
+        if (index !== -1) {
+          currentScene.stack.splice(index, 1)
+        }
+        currentScene.requestRender()
+      },
     },
   }
 

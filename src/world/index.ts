@@ -6,8 +6,8 @@ import { Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, 
 import { Mat4, Vec3 } from '../core/types'
 
 export interface Object3D {
-  add: (child: Object3D) => void
   bind: (parent: Object3D | Scene) => void
+  unbind: () => void
   matrix: Token<mat4>
   parent: Scene | Object3D | undefined
 }
@@ -19,11 +19,9 @@ export interface Object3D {
 /**********************************************************************************/
 
 type Scene = GL & {
-  add: (object3D: Object3D) => void
   camera: Token<mat4>
   matrix: Token<mat4>
   perspective: Token<mat4>
-  remove: (object3D: Object3D) => void
   stack: Program[]
 }
 
@@ -45,17 +43,10 @@ export const createScene = (canvas = document.createElement('canvas')) => {
 
   const scene: Scene = {
     ...gl,
-    add: (object3D: Object3D) => {
-      object3D.bind(scene)
-      gl.requestRender()
-    },
     stack,
     camera,
     matrix,
     perspective,
-    remove: (object3D: Object3D) => {
-      gl.requestRender()
-    },
   }
 
   return scene
@@ -168,6 +159,10 @@ export const createShape = <TOptions extends ShapeOptions>(
     return program
   }
 
+  let cleanupSubscription: (() => void) | undefined
+  let currentProgram: Program | undefined
+  let currentScene: Scene | undefined
+
   const shape: Shape = {
     add: (child: Object3D) => {
       child.bind(shape)
@@ -179,12 +174,30 @@ export const createShape = <TOptions extends ShapeOptions>(
     parent: undefined,
     bind: (parent) => {
       shape.parent = parent
-      parent.matrix.subscribe((parentMatrix) => matrix.set(mat4.add(matrix.get(), localMatrix.get(), parentMatrix)))
+      cleanupSubscription = parent.matrix.subscribe((parentMatrix) =>
+        matrix.set(mat4.add(matrix.get(), localMatrix.get(), parentMatrix))
+      )
       matrix.set(mat4.add(matrix.get(), localMatrix.get(), parent.matrix.get()))
-      const scene = getScene(parent)
-      if (!scene) return
-      scene.stack.push(createProgram(scene))
-      scene.requestRender()
+      currentScene = getScene(parent)
+      if (!currentScene) return
+      currentProgram = createProgram(currentScene)
+      currentScene.stack.push(currentProgram)
+      currentScene.requestRender()
+    },
+    unbind: () => {
+      shape.parent = undefined
+      if (cleanupSubscription) {
+        cleanupSubscription()
+        cleanupSubscription = undefined
+      }
+      if (currentScene) {
+        const index = currentScene.stack.findIndex((program) => program === currentProgram)
+        if (index !== -1) {
+          currentScene.stack.splice(index, 1)
+        }
+        currentScene.requestRender()
+        currentScene = undefined
+      }
     },
   }
 

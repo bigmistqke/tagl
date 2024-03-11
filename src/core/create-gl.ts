@@ -147,9 +147,9 @@ export const createGL = (canvas: HTMLCanvasElement) => {
 
       if (indices) {
         const indicesBuffer = (
-          isBufferToken<Uint16Array>(indices)
+          isBufferToken(indices)
             ? indices
-            : buffer(isAtom<Uint16Array>(indices) ? indices : new Uint16Array(indices), {
+            : buffer(isAtom(indices) ? indices : new Uint16Array(indices), {
                 target: 'ELEMENT_ARRAY_BUFFER',
                 usage: 'STATIC_DRAW',
               })

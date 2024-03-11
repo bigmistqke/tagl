@@ -152,9 +152,9 @@ export const createShape = <TOptions extends ShapeOptions>(
   localMatrix.subscribe(dirtyMatrix)
 
   const indicesBuffer = options.indices
-    ? isBufferToken<Uint16Array>(options.indices)
+    ? isBufferToken(options.indices)
       ? options.indices
-      : buffer(isAtom<Uint16Array>(options.indices) ? options.indices : new Uint16Array(options.indices), {
+      : buffer(isAtom(options.indices) ? options.indices : new Uint16Array(options.indices), {
           target: 'ELEMENT_ARRAY_BUFFER',
           usage: 'STATIC_DRAW',
         })

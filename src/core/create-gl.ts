@@ -4,11 +4,6 @@ import { Atom, BufferToken, buffer, isAtom, isBufferToken } from './tokens'
 import { ProgramRegistry, glRegistry, type ProgramRecord } from './virtualization/registries'
 import { getVirtualProgram } from './virtualization/virtual-program'
 
-export type Program = {
-  draw: () => void
-  program: WebGLProgram
-}
-
 export const createGL = (canvas: HTMLCanvasElement) => {
   const ctx = canvas.getContext('webgl2')
 
@@ -62,7 +57,15 @@ export const createGL = (canvas: HTMLCanvasElement) => {
     isPending: boolean
     scheduledRender: boolean
     requestRender: () => void
-    createProgram: (options: ProgramOptions) => Program
+    createProgram: (
+      options: {
+        vertex: ReturnType<typeof glsl>
+        fragment: ReturnType<typeof glsl>
+      } & (
+        | { count: number | Atom<number>; indices?: never }
+        | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
+      )
+    ) => Program
     onLoop: (callback: (now: number) => void) => () => void
   } = {
     autosize: () => {
@@ -134,6 +137,13 @@ export const createGL = (canvas: HTMLCanvasElement) => {
       fragment.bind(fragmentConfig)
 
       const visible = true
+      const onBeforeDrawHandlers: (() => void)[] = []
+      const onBeforeDraw = (callback: () => void) => {
+        onBeforeDrawHandlers.push(callback)
+        return () => {
+          console.error('TODO')
+        }
+      }
 
       if (indices) {
         const indicesBuffer = (
@@ -153,6 +163,8 @@ export const createGL = (canvas: HTMLCanvasElement) => {
               gl_record.value.program = program
             }
 
+            onBeforeDrawHandlers.forEach((handler) => handler())
+
             vertex.update(vertexConfig)
             fragment.update(fragmentConfig)
 
@@ -161,6 +173,7 @@ export const createGL = (canvas: HTMLCanvasElement) => {
 
             gl.ctx.drawElements(gl.ctx.TRIANGLES, indicesBuffer.get().length, gl.ctx.UNSIGNED_SHORT, 0)
           },
+          onBeforeDraw,
           program,
           visible,
         }
@@ -176,11 +189,14 @@ export const createGL = (canvas: HTMLCanvasElement) => {
               gl_record.value.program = program
             }
 
+            onBeforeDrawHandlers.forEach((handler) => handler())
+
             vertex.update(vertexConfig)
             fragment.update(fragmentConfig)
 
             gl.ctx.drawArrays(gl.ctx.TRIANGLES, 0, typeof count === 'number' ? count : count.get())
           },
+          onBeforeDraw,
           program,
           visible,
         }
@@ -203,3 +219,8 @@ export const createGL = (canvas: HTMLCanvasElement) => {
 }
 
 export type GL = ReturnType<typeof createGL>
+export type Program = {
+  draw: () => void
+  program: WebGLProgram
+  onBeforeDraw: (callback: () => void) => () => void
+}

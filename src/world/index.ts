@@ -2,7 +2,7 @@ import { mat4, vec3 } from 'gl-matrix'
 
 import { GL, Program, ShaderToken, attribute, createGL, glsl, isShader, uniform } from '../core'
 
-import { $TYPE, Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, isToken } from '../core/tokens'
+import { Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, isToken } from '../core/tokens'
 import { Mat4, Vec3 } from '../core/types'
 import { traverse } from './utils'
 
@@ -129,15 +129,27 @@ export const createShape = <TOptions extends ShapeOptions>(
   const uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
 
   const matrix = uniform.mat4(mat4.clone('get' in options.matrix ? options.matrix.get() : options.matrix))
-  const localMatrix =
-    $TYPE in options.matrix && options.matrix[$TYPE] === 'token' ? options.matrix : uniform.mat4(options.matrix)
+  const localMatrix = isToken(options.matrix) ? options.matrix : uniform.mat4(options.matrix)
 
-  const updateMatrix = () => {
+  let shouldUpdateMatrix = true
+
+  const onBeforeDrawHandler = () => {
+    if (!shouldUpdateMatrix) return
     const parentMatrix = shape.__.parent?.__.matrix
-    if (!parentMatrix) return
-    matrix.set((matrix) => mat4.multiply(matrix, parentMatrix.get(), localMatrix.get()))
+    if (parentMatrix) {
+      matrix.set((matrix, { preventRender }) => {
+        preventRender()
+        return mat4.multiply(matrix, parentMatrix.get(), localMatrix.get())
+      })
+    }
+    shouldUpdateMatrix = false
   }
-  localMatrix.subscribe(updateMatrix)
+  const dirtyMatrix = () => {
+    if (shouldUpdateMatrix) return
+    shouldUpdateMatrix = true
+    matrix.__.requestRender()
+  }
+  localMatrix.subscribe(dirtyMatrix)
 
   const indicesBuffer = options.indices
     ? isBufferToken<Uint16Array>(options.indices)
@@ -154,6 +166,7 @@ export const createShape = <TOptions extends ShapeOptions>(
     if (cached) return cached
 
     const { camera, perspective, createProgram } = scene
+
     const vertex = isShader(options.vertex)
       ? options.vertex
       : typeof options.vertex === 'function'
@@ -176,10 +189,12 @@ export const createShape = <TOptions extends ShapeOptions>(
             color = vec4(${color}, 1.);
           }`
 
-    const program = createProgram(
-      indicesBuffer ? { vertex, fragment, indices: indicesBuffer } : { vertex, fragment, count: options.count! }
-    )
+    const programOptions = indicesBuffer
+      ? { vertex, fragment, indices: indicesBuffer }
+      : { vertex, fragment, count: options.count! }
 
+    const program = createProgram(programOptions)
+    program.onBeforeDraw(onBeforeDrawHandler)
     cache.set(scene, program)
 
     return program
@@ -203,8 +218,7 @@ export const createShape = <TOptions extends ShapeOptions>(
     bind: (parent) => {
       parent.__.children.add(shape)
       shape.__.parent = parent
-      current.cleanup = parent.__.matrix.subscribe(updateMatrix)
-      updateMatrix()
+      current.cleanup = parent.__.matrix.subscribe(dirtyMatrix)
       traverse(shape, (object3D) => object3D.__.mount())
       return shape
     },
@@ -233,6 +247,7 @@ export const createShape = <TOptions extends ShapeOptions>(
         if (!current.scene) return
         const currentProgram = createProgram(current.scene)
         current.program = currentProgram
+
         current.scene.stack.set((stack) => {
           stack.push(currentProgram)
           return stack
@@ -249,7 +264,8 @@ export const createShape = <TOptions extends ShapeOptions>(
           if (index !== -1) {
             stack.splice(index, 1)
           } else {
-            flags.equals = true
+            flags.preventRender()
+            flags.preventNotification()
           }
           return stack
         })

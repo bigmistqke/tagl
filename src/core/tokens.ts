@@ -425,7 +425,7 @@ export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: Bu
 /*                                                                                */
 /**********************************************************************************/
 
-type Infer<T, TKey extends keyof AtomTypes<any>> = T extends { get: infer TAccessor }
+type InferAtomType<T, TKey extends keyof AtomTypes<any>> = T extends { get: infer TAccessor }
   ? TAccessor extends Accessor<infer TValue>
     ? AtomTypes<TValue>[TKey]
     : AtomTypes[TKey]
@@ -437,9 +437,9 @@ type AtomTypes<T = any> = {
   token: Token<T>
 }
 
-export const isToken = <T>(value: T): value is Infer<T, 'token'> =>
+export const isToken = <T>(value: T): value is InferAtomType<T, 'token'> =>
   typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'token'
-export const isBufferToken = <T>(value: T): value is Infer<T, 'bufferToken'> =>
+export const isBufferToken = <T>(value: T): value is InferAtomType<T, 'bufferToken'> =>
   typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'buffer'
-export const isAtom = <T>(value: T): value is Infer<T, 'atom'> =>
-  typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'atm'
+export const isAtom = <T>(value: T): value is InferAtomType<T, 'atom'> =>
+  typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'atom'

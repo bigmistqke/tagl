@@ -121,6 +121,27 @@ export interface Shape extends Object3D {
   uv: Token<Float32Array>
 }
 
+const dirt = <TInput extends Token<any> | Atom<any>>(
+  input: TInput,
+  callback: (value: ReturnType<TInput['get']>) => ReturnType<TInput['get']>
+) => {
+  let shouldUpdate = true
+  const onBeforeDraw = () => {
+    if (!shouldUpdate) return
+    input.set((value, { preventRender }) => {
+      preventRender()
+      return callback(value)
+    })
+    shouldUpdate = false
+  }
+  const dirty = () => {
+    if (shouldUpdate) return
+    shouldUpdate = true
+    input.__.requestRender()
+  }
+  return { ...input, onBeforeDraw, dirty }
+}
+
 export const createShape = <TOptions extends ShapeOptions>(
   options: TOptions
 ): TOptions['indices'] extends never ? Shape : Shape & { indices: BufferToken<Uint16Array> } => {
@@ -128,28 +149,17 @@ export const createShape = <TOptions extends ShapeOptions>(
   const vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
   const uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
 
-  const matrix = uniform.mat4(mat4.clone('get' in options.matrix ? options.matrix.get() : options.matrix))
-  const localMatrix = isToken(options.matrix) ? options.matrix : uniform.mat4(options.matrix)
-
-  let shouldUpdateMatrix = true
-
-  const onBeforeDrawHandler = () => {
-    if (!shouldUpdateMatrix) return
-    const parentMatrix = shape.__.parent?.__.matrix
-    if (parentMatrix) {
-      matrix.set((matrix, { preventRender }) => {
-        preventRender()
-        return mat4.multiply(matrix, parentMatrix.get(), localMatrix.get())
-      })
+  const matrix = dirt(
+    uniform.mat4(mat4.clone('get' in options.matrix ? options.matrix.get() : options.matrix)),
+    (matrix) => {
+      const parentMatrix = shape.__.parent?.__.matrix
+      if (!parentMatrix) return matrix
+      return mat4.multiply(matrix, parentMatrix.get(), localMatrix.get())
     }
-    shouldUpdateMatrix = false
-  }
-  const dirtyMatrix = () => {
-    if (shouldUpdateMatrix) return
-    shouldUpdateMatrix = true
-    matrix.__.requestRender()
-  }
-  localMatrix.subscribe(dirtyMatrix)
+  )
+
+  const localMatrix = isToken(options.matrix) ? options.matrix : uniform.mat4(options.matrix)
+  localMatrix.subscribe(matrix.dirty)
 
   const indicesBuffer = options.indices
     ? isBufferToken(options.indices)
@@ -194,7 +204,7 @@ export const createShape = <TOptions extends ShapeOptions>(
       : { vertex, fragment, count: options.count! }
 
     const program = createProgram(programOptions)
-    program.onBeforeDraw(onBeforeDrawHandler)
+    program.onBeforeDraw(matrix.onBeforeDraw)
     cache.set(scene, program)
 
     return program
@@ -218,7 +228,7 @@ export const createShape = <TOptions extends ShapeOptions>(
     bind: (parent) => {
       parent.__.children.add(shape)
       shape.__.parent = parent
-      current.cleanup = parent.__.matrix.subscribe(dirtyMatrix)
+      current.cleanup = parent.__.matrix.subscribe(matrix.dirty)
       traverse(shape, (object3D) => object3D.__.mount())
       return shape
     },

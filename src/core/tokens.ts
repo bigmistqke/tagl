@@ -83,8 +83,11 @@ export type Token<T = Float32Array, TLocation = WebGLUniformLocation | number> =
   subscribe: (callback: (value: T) => void) => () => void
   __: {
     bind: (options: { gl: GL; virtualProgram: VirtualProgram; location: TLocation }) => Token<T, TLocation>
-    template: (name: string) => string | undefined
+    requestRender: () => void
     getLocation: (options: { gl: GL; program: WebGLProgram; name: string }) => TLocation
+    notify: () => void
+    subscriptions: ReferenceCount<(value: T) => void>
+    template: (name: string) => string | undefined
     update: (options: { gl: GL; virtualProgram: VirtualProgram; location: TLocation }) => void
   }
 }
@@ -102,60 +105,58 @@ export type Atom<T = any> = {
   subscribe: (callback: (value: T) => void) => () => void
   __: {
     bind: (options: { gl: GL; virtualProgram: VirtualProgram }, callback?: () => false | void) => void
+    requestRender: () => void
+    notify: () => void
   }
 }
 
 export const atom = <T>(value: T) => {
-  const cache = new Set()
-  const get = () => value
+  const cache = new Set<GL>()
 
+  let shouldNotify = true
+  let shouldRender = true
   const config = {
-    equals: false,
+    preventNotification: () => (shouldNotify = false),
+    preventRender: () => (shouldRender = false),
   }
 
   const subscriptions = new ReferenceCount<(value: T) => void>()
-  const bindings = new ReferenceCount<(value: T) => void>()
-  const notify = () => {
-    const value = get()
-    if (!config.equals) {
-      subscriptions.forEach((callback) => callback(value))
-      bindings.forEach((callback) => callback(value))
-    }
-  }
-  const subscribe = (callback: (value: T) => void) => {
-    subscriptions.add(callback)
-    return () => subscriptions.delete(callback)
-  }
+  const bindings = new ReferenceCount<() => void>()
+  const requestRender = () => bindings.forEach((callback) => callback())
+  const notify = () => subscriptions.forEach((callback) => callback(value))
 
   const atom: Atom<T> = {
     [$TYPE]: 'atom',
-    get,
+    get: () => value,
     set: (_value) => {
-      config.equals = false
       if (typeof _value === 'function') {
         // @ts-expect-error
         value = _value(value, config)
       } else {
         value = _value
       }
-      if (!config.equals) {
-        notify()
-      }
+      if (shouldNotify) notify()
+      if (shouldRender) requestRender()
+      shouldNotify = true
+      shouldRender = true
     },
-    subscribe,
+    subscribe: (callback: (value: T) => void) => {
+      subscriptions.add(callback)
+      return () => subscriptions.delete(callback)
+    },
     __: {
-      bind: ({ gl, virtualProgram }, callback) => {
-        if (cache.has(virtualProgram)) return
-        cache.add(virtualProgram)
+      bind: ({ gl }, callback) => {
+        if (cache.has(gl)) return
+        cache.add(gl)
         bindings.add(() => callback?.() !== false && !gl.isPending && gl.requestRender())
       },
+      requestRender,
+      notify,
     },
   }
 
   return atom
 }
-
-export const isAtom = <T = any>(value: any): value is Atom<T> => typeof value === 'object' && $TYPE in value
 
 /**********************************************************************************/
 /*                                                                                */
@@ -203,6 +204,9 @@ export const uniform = new Proxy({} as UniformProxy, {
         set,
         subscribe,
         __: {
+          requestRender: __.requestRender,
+          subscriptions: __.subscriptions,
+          notify: __.notify,
           bind: (options) => {
             const uniform = options.virtualProgram.registerUniform(options.location, get)
             __.bind(options, () => {
@@ -421,7 +425,21 @@ export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: Bu
 /*                                                                                */
 /**********************************************************************************/
 
-export const isToken = (value: any): value is Token =>
-  typeof value === 'object' && $TYPE in value && value[$TYPE] === 'token'
-export const isBufferToken = <T>(value: any): value is BufferToken<T> =>
-  typeof value === 'object' && $TYPE in value && value[$TYPE] === 'buffer'
+type Infer<T, TKey extends keyof AtomTypes<any>> = T extends { get: infer TAccessor }
+  ? TAccessor extends Accessor<infer TValue>
+    ? AtomTypes<TValue>[TKey]
+    : AtomTypes[TKey]
+  : AtomTypes[TKey]
+
+type AtomTypes<T = any> = {
+  atom: Atom<T>
+  bufferToken: BufferToken<T>
+  token: Token<T>
+}
+
+export const isToken = <T>(value: T): value is Infer<T, 'token'> =>
+  typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'token'
+export const isBufferToken = <T>(value: T): value is Infer<T, 'bufferToken'> =>
+  typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'buffer'
+export const isAtom = <T>(value: T): value is Infer<T, 'atom'> =>
+  typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'atm'

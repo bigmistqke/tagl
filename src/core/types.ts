@@ -76,7 +76,8 @@ export type BufferOptions = {
 }
 
 type SetterControl = {
-  equals: boolean
+  preventRender: () => void
+  preventNotification: () => void
 }
 export type Setter<T = Float32Array> = (value: T | ((value: T, control: SetterControl) => T)) => void
 export type GLProgramMemory = {

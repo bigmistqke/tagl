@@ -1,6 +1,7 @@
-/** Map with reference-count and dirty-property */
+type Record<TData> = { value: TData; dirty: boolean }
+
 export class RegistryBase<TKey, TData = unknown> {
-  map = new Map<TKey, { value: TData; count: number; dirty: boolean }>()
+  private map = new Map<TKey, Record<TData>>()
 
   has(key: TKey) {
     return this.map.has(key)
@@ -10,47 +11,22 @@ export class RegistryBase<TKey, TData = unknown> {
     return this.map.get(key)
   }
 
-  _register(key: TKey, data: () => TData) {
+  _register(key: TKey, initialize: () => TData) {
     const record = this.map.get(key)
+
     if (!record) {
-      const entry = {
-        value: data(),
-        count: 1,
+      const record = {
+        value: initialize(),
         dirty: true,
       }
-      this.map.set(key, entry)
-      return entry
+      this.map.set(key, record)
+      return record
     } else {
-      // record.count++
       return record
     }
   }
-
-  update(key: TKey, data: TData) {
-    const entry = this.map.get(key)
-    if (entry) {
-      entry.value = data
-      entry.dirty = false
-    }
-  }
-
-  dirty(key: TKey) {
-    const entry = this.map.get(key)
-    if (entry) entry.dirty = true
-  }
-
-  cleanup(key: TKey) {
-    const record = this.map.get(key)
-    if (!record) return undefined
-    record.count--
-    if (record.count === 0) {
-      this.map.delete(key)
-    }
-    return record
-  }
 }
 
-/** Map with reference-count and dirty-property */
 export class Registry<TKey, TData = unknown> extends RegistryBase<TKey, TData> {
   register = super._register
 }

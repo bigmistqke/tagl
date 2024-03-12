@@ -76,7 +76,7 @@ export class ShaderLocationRegistry extends RegistryBase<WebGLProgram, (number |
 }
 
 export type ProgramRecord = {
-  program: WebGLProgram
+  glProgram: WebGLProgram
   locations: {
     vertex: GLLocation[]
     fragment: GLLocation[]
@@ -95,15 +95,15 @@ export class ProgramRegistry extends RegistryBase<
     return super
       ._register(vertex.template, () => new RegistryBase<TemplateStringsArray, ProgramRecord>())
       .value._register(fragment.template, () => {
-        const program = createWebGLProgram(this.gl.ctx, vertex.compilation.code, fragment.compilation.code)
+        const glProgram = createWebGLProgram(this.gl.ctx, vertex.compilation.code, fragment.compilation.code)
 
-        createVirtualProgram(this.gl.ctx, program)
+        createVirtualProgram(this.gl.ctx, glProgram)
 
         return {
-          program,
+          glProgram,
           locations: {
-            vertex: vertex.getLocations({ gl: this.gl, program }),
-            fragment: fragment.getLocations({ gl: this.gl, program }),
+            vertex: vertex.getLocations({ gl: this.gl, program: glProgram }),
+            fragment: fragment.getLocations({ gl: this.gl, program: glProgram }),
           },
         }
       })

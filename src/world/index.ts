@@ -126,7 +126,7 @@ const dirt = <TInput extends Token<any> | Atom<any>>(
   callback: (value: ReturnType<TInput['get']>) => ReturnType<TInput['get']>
 ) => {
   let shouldUpdate = true
-  const onBeforeDraw = () => {
+  const check = () => {
     if (!shouldUpdate) return
     input.set((value, { preventRender }) => {
       preventRender()
@@ -139,7 +139,8 @@ const dirt = <TInput extends Token<any> | Atom<any>>(
     shouldUpdate = true
     input.__.requestRender()
   }
-  return { ...input, onBeforeDraw, dirty }
+  input.onBeforeDraw(check)
+  return { ...input, check, dirty }
 }
 
 export const createShape = <TOptions extends ShapeOptions>(
@@ -149,17 +150,27 @@ export const createShape = <TOptions extends ShapeOptions>(
   const vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
   const uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
 
-  const matrix = dirt(
-    uniform.mat4(mat4.clone('get' in options.matrix ? options.matrix.get() : options.matrix)),
-    (matrix) => {
-      const parentMatrix = shape.__.parent?.__.matrix
-      if (!parentMatrix) return matrix
+  let shouldUpdateMatrix = true
+  const dirtyMatrix = () => {
+    if (shouldUpdateMatrix) return
+    shouldUpdateMatrix = true
+    matrix.__.requestRender()
+  }
+
+  const matrix = uniform.mat4(mat4.clone('get' in options.matrix ? options.matrix.get() : options.matrix))
+  matrix.onBeforeDraw(() => {
+    if (!shouldUpdateMatrix) return
+    const parentMatrix = shape.__.parent?.__.matrix
+    if (!parentMatrix) return
+    matrix.set((matrix, { preventRender }) => {
+      preventRender()
       return mat4.multiply(matrix, parentMatrix.get(), localMatrix.get())
-    }
-  )
+    })
+    shouldUpdateMatrix = false
+  })
 
   const localMatrix = isToken(options.matrix) ? options.matrix : uniform.mat4(options.matrix)
-  localMatrix.subscribe(matrix.dirty)
+  localMatrix.subscribe(dirtyMatrix)
 
   const indicesBuffer = options.indices
     ? isBufferToken(options.indices)
@@ -204,7 +215,6 @@ export const createShape = <TOptions extends ShapeOptions>(
       : { vertex, fragment, count: options.count! }
 
     const program = createProgram(programOptions)
-    program.onBeforeDraw(matrix.onBeforeDraw)
     cache.set(scene, program)
 
     return program
@@ -228,7 +238,7 @@ export const createShape = <TOptions extends ShapeOptions>(
     bind: (parent) => {
       parent.__.children.add(shape)
       shape.__.parent = parent
-      current.cleanup = parent.__.matrix.subscribe(matrix.dirty)
+      current.cleanup = parent.__.matrix.subscribe(dirtyMatrix)
       traverse(shape, (object3D) => object3D.__.mount())
       return shape
     },
@@ -239,9 +249,7 @@ export const createShape = <TOptions extends ShapeOptions>(
       shape.__.parent?.__.children.delete(shape)
       shape.__.parent = undefined
 
-      if (current.cleanup) {
-        current.cleanup()
-      }
+      current.cleanup?.()
 
       current.scene = undefined
       current.cleanup = undefined
@@ -253,8 +261,11 @@ export const createShape = <TOptions extends ShapeOptions>(
       matrix,
       mount: () => {
         if (!shape.__.parent) return
+
         current.scene = getScene(shape.__.parent)
+
         if (!current.scene) return
+
         const currentProgram = createProgram(current.scene)
         current.program = currentProgram
 
@@ -265,10 +276,15 @@ export const createShape = <TOptions extends ShapeOptions>(
       },
       unmount: () => {
         if (!shape.__.parent) return
+
         current.scene = getScene(shape.__.parent)
+
         if (!current.scene) return
+
         const currentProgram = current.program
+
         if (!currentProgram) return
+
         current.scene.stack.set((stack, flags) => {
           const index = stack.findIndex((program) => program === currentProgram)
           if (index !== -1) {
@@ -391,6 +407,11 @@ export const createCube = (options: Omit<ShapeOptions, 'vertices' | 'indices' | 
 /*                                                                                */
 /**********************************************************************************/
 
+const cache = {
+  vertices: [] as Float32Array[],
+  indices: [] as Uint16Array[],
+}
+
 export const createDisc = (
   options: Omit<ShapeOptions, 'vertices' | 'indices' | 'uv'> & {
     radius: number
@@ -408,6 +429,9 @@ export const createDisc = (
     const size = segments.get() + 1
 
     vertices.set(() => {
+      const cached = cache.vertices[segments.get()]
+      if (cached) return cached
+
       const vertices = new Float32Array(size * 3)
 
       for (let index = 0; index <= vertices.length; index = index + 3) {
@@ -422,10 +446,13 @@ export const createDisc = (
 
       uv.set(vertices)
 
-      return vertices
+      return (cache.vertices[segments.get()] = vertices)
     })
 
     indices.set(() => {
+      const cached = cache.indices[segments.get()]
+      if (cached) return cached
+
       const indices: number[] = []
       for (let i = 1; i < size; i++) {
         if (i + 1 === size) {
@@ -435,7 +462,7 @@ export const createDisc = (
         }
       }
 
-      return new Uint16Array(indices)
+      return (cache.indices[segments.get()] = new Uint16Array(indices))
     })
   }
 

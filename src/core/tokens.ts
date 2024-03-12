@@ -1,4 +1,4 @@
-import { GL } from '.'
+import { GL, Program } from '.'
 import { ReferenceCount } from './data-structures/reference-count'
 import {
   Accessor,
@@ -80,13 +80,18 @@ export type Token<T = Float32Array, TLocation = WebGLUniformLocation | number> =
   [$TYPE]: 'token'
   set: Setter<T>
   get: Accessor<T>
+  onBeforeDraw: (callback: () => void) => () => void
   subscribe: (callback: (value: T) => void) => () => void
   __: {
-    bind: (options: { gl: GL; virtualProgram: VirtualProgram; location: TLocation }) => Token<T, TLocation>
-    requestRender: () => void
+    bind: (options: {
+      gl: GL
+      program: Program
+      virtualProgram: VirtualProgram
+      location: TLocation
+    }) => Token<T, TLocation>
     getLocation: (options: { gl: GL; program: WebGLProgram; name: string }) => TLocation
     notify: () => void
-    subscriptions: ReferenceCount<(value: T) => void>
+    requestRender: () => void
     template: (name: string) => string | undefined
     update: (options: { gl: GL; virtualProgram: VirtualProgram; location: TLocation }) => void
   }
@@ -102,9 +107,10 @@ export type Atom<T = any> = {
   [$TYPE]: 'atom'
   set: Setter<T>
   get: Accessor<T>
+  onBeforeDraw: (callback: () => void) => () => void
   subscribe: (callback: (value: T) => void) => () => void
   __: {
-    bind: (options: { gl: GL; virtualProgram: VirtualProgram }, callback?: () => false | void) => void
+    bind: (options: { gl: GL; virtualProgram: VirtualProgram; program: Program }, callback?: () => false | void) => void
     requestRender: () => void
     notify: () => void
   }
@@ -121,9 +127,11 @@ export const atom = <T>(value: T) => {
   }
 
   const subscriptions = new ReferenceCount<(value: T) => void>()
-  const bindings = new ReferenceCount<() => void>()
-  const requestRender = () => bindings.forEach((callback) => callback())
+  const requestRenders = new ReferenceCount<() => void>()
+  const requestRender = () => requestRenders.forEach((callback) => callback())
   const notify = () => subscriptions.forEach((callback) => callback(value))
+  const onBeforeDrawHandlers: (() => void)[] = []
+  const programs: Program[] = []
 
   const atom: Atom<T> = {
     [$TYPE]: 'atom',
@@ -135,20 +143,31 @@ export const atom = <T>(value: T) => {
       } else {
         value = _value
       }
+
       if (shouldNotify) notify()
       if (shouldRender) requestRender()
+
       shouldNotify = true
       shouldRender = true
+    },
+    onBeforeDraw: (callback: () => void) => {
+      onBeforeDrawHandlers.push(callback)
+      programs.forEach((program) => program.onBeforeDraw(callback))
+      return () => {}
     },
     subscribe: (callback: (value: T) => void) => {
       subscriptions.add(callback)
       return () => subscriptions.delete(callback)
     },
     __: {
-      bind: ({ gl }, callback) => {
+      bind: ({ gl, program }, callback) => {
+        programs.push(program)
+        onBeforeDrawHandlers.forEach((handler) => program.onBeforeDraw(handler))
+
         if (cache.has(gl)) return
         cache.add(gl)
-        bindings.add(() => callback?.() !== false && !gl.isPending && gl.requestRender())
+
+        requestRenders.add(() => !gl.isPending && callback?.() !== false && gl.requestRender())
       },
       requestRender,
       notify,
@@ -196,16 +215,16 @@ export const uniform = new Proxy({} as UniformProxy, {
   get(target, type: string) {
     return (...[value, options]: UniformParameters) => {
       const functionName = uniformDataTypeToFunctionName(type)
-      const { __, get, subscribe, set } = isAtom(value) ? value : atom<any>(value)
+      const { __, get, subscribe, onBeforeDraw, set } = isAtom(value) ? value : atom<any>(value)
 
       const token: Token<Exclude<typeof value, Atom>> = {
         [$TYPE]: 'token',
         get,
         set,
         subscribe,
+        onBeforeDraw,
         __: {
           requestRender: __.requestRender,
-          subscriptions: __.subscriptions,
           notify: __.notify,
           bind: (options) => {
             const uniform = options.virtualProgram.registerUniform(options.location, get)
@@ -377,8 +396,8 @@ export type BufferToken<T = Float32Array> = {
   get: Accessor<T>
   subscribe: (callback: (value: T) => void) => () => void
   __: {
-    bind: (options: { gl: GL; virtualProgram: VirtualProgram }) => BufferToken<T>
-    update: (options: { gl: GL; virtualProgram: VirtualProgram }) => BufferToken<T>
+    bind: (options: { gl: GL; program: Program; virtualProgram: VirtualProgram }) => BufferToken<T>
+    update: (options: { gl: GL; program: Program; virtualProgram: VirtualProgram }) => BufferToken<T>
   }
 }
 

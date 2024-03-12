@@ -1,8 +1,9 @@
 import { DequeMap } from './data-structures/deque-map'
 import { glsl } from './glsl'
 import { Atom, BufferToken, buffer, isAtom, isBufferToken } from './tokens'
+import { GLLocation } from './types'
 import { ProgramRegistry, glRegistry, type ProgramRecord } from './virtualization/registries'
-import { getVirtualProgram } from './virtualization/virtual-program'
+import { VirtualProgram, getVirtualProgram } from './virtualization/virtual-program'
 
 export const createGL = (canvas: HTMLCanvasElement) => {
   const ctx = canvas.getContext('webgl2')
@@ -57,15 +58,7 @@ export const createGL = (canvas: HTMLCanvasElement) => {
     isPending: boolean
     scheduledRender: boolean
     requestRender: () => void
-    createProgram: (
-      options: {
-        vertex: ReturnType<typeof glsl>
-        fragment: ReturnType<typeof glsl>
-      } & (
-        | { count: number | Atom<number>; indices?: never }
-        | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
-      )
-    ) => Program
+    createProgram: (options: Omit<ProgramOptions, 'gl'>) => Program
     onLoop: (callback: (now: number) => void) => () => void
   } = {
     autosize: () => {
@@ -100,108 +93,15 @@ export const createGL = (canvas: HTMLCanvasElement) => {
       if (looping) return
       requestIdleCallback(render)
     },
-    createProgram: ({
-      vertex,
-      fragment,
-      count,
-      indices,
-    }: {
-      vertex: ReturnType<typeof glsl>
-      fragment: ReturnType<typeof glsl>
-    } & (
-      | { count: number | Atom<number>; indices?: never }
-      | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
-    )) => {
-      const gl_record = glRegistry.register(gl.ctx)
-
-      const { program, locations } = ProgramRegistry.getInstance(gl).register(vertex, fragment).value as ProgramRecord
-
-      const virtualProgram = getVirtualProgram(program)
-
-      gl.ctx.useProgram(program)
-
-      const config = {
-        gl,
-        virtualProgram,
-      }
-      const vertexConfig = {
-        ...config,
-        locations: locations.vertex,
-      }
-      const fragmentConfig = {
-        ...config,
-        locations: locations.fragment,
-      }
-
-      vertex.bind(vertexConfig)
-      fragment.bind(fragmentConfig)
-
-      const visible = true
-      const onBeforeDrawHandlers: (() => void)[] = []
-      const onBeforeDraw = (callback: () => void) => {
-        onBeforeDrawHandlers.push(callback)
-        return () => {
-          console.error('TODO')
-        }
-      }
-
-      if (indices) {
-        const indicesBuffer = (
-          isBufferToken(indices)
-            ? indices
-            : buffer(isAtom(indices) ? indices : new Uint16Array(indices), {
-                target: 'ELEMENT_ARRAY_BUFFER',
-                usage: 'STATIC_DRAW',
-              })
-        ).__.bind(config)
-
-        return {
-          draw: () => {
-            if (!visible) return
-            if (gl_record.value.program !== program) {
-              gl.ctx.useProgram(program)
-              gl_record.value.program = program
-            }
-
-            onBeforeDrawHandlers.forEach((handler) => handler())
-
-            vertex.update(vertexConfig)
-            fragment.update(fragmentConfig)
-
-            indicesBuffer.__.bind(config)
-            indicesBuffer.__.update(config)
-
-            gl.ctx.drawElements(gl.ctx.TRIANGLES, indicesBuffer.get().length, gl.ctx.UNSIGNED_SHORT, 0)
-          },
-          onBeforeDraw,
-          program,
-          visible,
-        }
-      } else {
-        if (typeof count === 'object') {
-          count.__.bind(config)
-        }
-        return {
-          draw: () => {
-            if (!visible) return
-            if (gl_record.value.program !== program) {
-              gl.ctx.useProgram(program)
-              gl_record.value.program = program
-            }
-
-            onBeforeDrawHandlers.forEach((handler) => handler())
-
-            vertex.update(vertexConfig)
-            fragment.update(fragmentConfig)
-
-            gl.ctx.drawArrays(gl.ctx.TRIANGLES, 0, typeof count === 'number' ? count : count.get())
-          },
-          onBeforeDraw,
-          program,
-          visible,
-        }
-      }
-    },
+    createProgram: (
+      options: {
+        vertex: ReturnType<typeof glsl>
+        fragment: ReturnType<typeof glsl>
+      } & (
+        | { count: number | Atom<number>; indices?: never }
+        | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
+      )
+    ) => new Program({ gl, ...options }),
     onLoop: (callback: (now: number) => void) => {
       onLoops.push(callback)
 
@@ -219,8 +119,115 @@ export const createGL = (canvas: HTMLCanvasElement) => {
 }
 
 export type GL = ReturnType<typeof createGL>
-export type Program = {
-  draw: () => void
-  program: WebGLProgram
-  onBeforeDraw: (callback: () => void) => () => void
+
+type Config = {
+  gl: GL
+  virtualProgram: VirtualProgram
+  program: Program
+}
+
+type ProgramOptions = {
+  gl: GL
+  vertex: ReturnType<typeof glsl>
+  fragment: ReturnType<typeof glsl>
+} & (
+  | { count: number | Atom<number>; indices?: never }
+  | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
+)
+
+class Program {
+  visible: boolean
+  glProgram: WebGLProgram
+
+  private _config: Config
+  private _fragmentConfig: Config & { locations: GLLocation[] }
+  private _glRecord: { value: { program: WebGLProgram | undefined }; count: number; dirty: boolean }
+  private _indicesBuffer: BufferToken<Uint16Array> | undefined
+  private _onBeforeDrawHandlers: (() => void)[]
+  private _options: ProgramOptions
+  private _vertexConfig: Config & { locations: GLLocation[] }
+
+  constructor(options: ProgramOptions) {
+    this._options = options
+    this._glRecord = glRegistry.register(options.gl.ctx)
+
+    const { glProgram, locations } = ProgramRegistry.getInstance(options.gl).register(options.vertex, options.fragment)
+      .value as ProgramRecord
+
+    const virtualProgram = getVirtualProgram(glProgram)
+
+    this.glProgram = glProgram
+    this.visible = true
+    this._onBeforeDrawHandlers = []
+
+    this._config = {
+      gl: options.gl,
+      virtualProgram,
+      program: this,
+    }
+    this._vertexConfig = {
+      ...this._config,
+      locations: locations.vertex,
+    }
+    this._fragmentConfig = {
+      ...this._config,
+      locations: locations.fragment,
+    }
+
+    options.gl.ctx.useProgram(glProgram)
+    options.vertex.bind(this._vertexConfig)
+    options.fragment.bind(this._fragmentConfig)
+
+    if (options.indices) {
+      this._indicesBuffer = (
+        isBufferToken(options.indices)
+          ? options.indices
+          : buffer(isAtom(options.indices) ? options.indices : new Uint16Array(options.indices), {
+              target: 'ELEMENT_ARRAY_BUFFER',
+              usage: 'STATIC_DRAW',
+            })
+      ).__.bind(this._config)
+    } else {
+      if (typeof options.count === 'object') {
+        options.count.__.bind(this._config)
+      }
+    }
+  }
+
+  onBeforeDraw(callback: () => void) {
+    this._onBeforeDrawHandlers.push(callback)
+    return () => {
+      console.error('TODO')
+    }
+  }
+
+  draw() {
+    if (!this.visible) return
+    if (this._glRecord.value.program !== this.glProgram) {
+      this._options.gl.ctx.useProgram(this.glProgram)
+      this._glRecord.value.program = this.glProgram
+    }
+
+    this._onBeforeDrawHandlers.forEach((handler) => handler())
+    this._options.vertex.update(this._vertexConfig)
+    this._options.fragment.update(this._fragmentConfig)
+
+    if (this._options.indices) {
+      this._indicesBuffer!.__.bind(this._config)
+      this._indicesBuffer!.__.update(this._config)
+
+      this._options.gl.ctx.drawElements(
+        this._options.gl.ctx.TRIANGLES,
+        this._indicesBuffer!.get().length,
+        this._options.gl.ctx.UNSIGNED_SHORT,
+        0
+      )
+    } else {
+      this._options.gl.ctx.drawArrays(
+        this._options.gl.ctx.TRIANGLES,
+        0,
+        typeof this._options.count === 'number' ? this._options.count : this._options.count.get()
+      )
+    }
+  }
 }

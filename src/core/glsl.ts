@@ -1,4 +1,4 @@
-import { GL } from './create-gl'
+import { GL, Program } from './create-gl'
 import { Token } from './tokens'
 import { GLLocation } from './types'
 import { shaderCompilationRegistry } from './virtualization/registries'
@@ -11,21 +11,32 @@ export const glsl = function (template: TemplateStringsArray, ...tokens: Token<a
     [GLSL]: true,
     compilation,
     template,
-    getLocations: ({ gl, program }: { gl: GL; program: WebGLProgram }) =>
-      tokens.map((token, index) => token.__.getLocation({ gl, program, name: names[index]! })),
-    bind: ({ gl, virtualProgram, locations }: { gl: GL; virtualProgram: VirtualProgram; locations: GLLocation[] }) => {
+    getLocations: (options: { gl: GL; program: WebGLProgram }) =>
+      tokens.map((token, index) => token.__.getLocation({ ...options, name: names[index]! })),
+    bind: ({
+      gl,
+      locations,
+      program,
+      virtualProgram,
+    }: {
+      gl: GL
+      program: Program
+      virtualProgram: VirtualProgram
+      locations: GLLocation[]
+    }) => {
       for (let index = 0; index < tokens.length; index++) {
         tokens[index]!.__.bind({
+          location: locations[index]!,
           gl,
           virtualProgram,
-          location: locations[index]!,
+          program,
         })
       }
     },
     update: ({
+      locations,
       gl,
       virtualProgram,
-      locations,
     }: {
       gl: GL
       virtualProgram: VirtualProgram
@@ -33,9 +44,9 @@ export const glsl = function (template: TemplateStringsArray, ...tokens: Token<a
     }) => {
       for (let index = 0; index < tokens.length; index++) {
         tokens[index]!.__.update({
+          location: locations[index]!,
           gl,
           virtualProgram,
-          location: locations[index]!,
         })
       }
     },

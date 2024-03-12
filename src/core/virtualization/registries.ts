@@ -102,8 +102,8 @@ export class ProgramRegistry extends RegistryBase<
         return {
           glProgram,
           locations: {
-            vertex: vertex.getLocations({ gl: this.gl, program: glProgram }),
-            fragment: fragment.getLocations({ gl: this.gl, program: glProgram }),
+            vertex: vertex.getLocations(this.gl, glProgram),
+            fragment: fragment.getLocations(this.gl, glProgram),
           },
         }
       })

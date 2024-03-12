@@ -83,17 +83,12 @@ export type Token<T = Float32Array, TLocation = WebGLUniformLocation | number> =
   onBeforeDraw: (callback: () => void) => () => void
   subscribe: (callback: (value: T) => void) => () => void
   __: {
-    bind: (options: {
-      gl: GL
-      program: Program
-      virtualProgram: VirtualProgram
-      location: TLocation
-    }) => Token<T, TLocation>
-    getLocation: (options: { gl: GL; program: WebGLProgram; name: string }) => TLocation
+    bind: (gl: GL, location: TLocation, program: Program, virtualProgram: VirtualProgram) => Token<T, TLocation>
+    getLocation: (gl: GL, program: WebGLProgram, name: string) => TLocation
     notify: () => void
     requestRender: () => void
     template: (name: string) => string | undefined
-    update: (options: { gl: GL; virtualProgram: VirtualProgram; location: TLocation }) => void
+    update: (gl: GL, location: TLocation, virtualProgram: VirtualProgram) => void
   }
 }
 
@@ -110,7 +105,7 @@ export type Atom<T = any> = {
   onBeforeDraw: (callback: () => void) => () => void
   subscribe: (callback: (value: T) => void) => () => void
   __: {
-    bind: (options: { gl: GL; virtualProgram: VirtualProgram; program: Program }, callback?: () => false | void) => void
+    bind: (gl: GL, program: Program, virtualProgram: VirtualProgram, callback?: () => false | void) => void
     requestRender: () => void
     notify: () => void
   }
@@ -160,12 +155,12 @@ export const atom = <T>(value: T) => {
       return () => subscriptions.delete(callback)
     },
     __: {
-      bind: ({ gl, program }, callback) => {
-        programs.push(program)
-        onBeforeDrawHandlers.forEach((handler) => program.onBeforeDraw(handler))
-
+      bind: (gl, program, virtualProgram, callback) => {
         if (cache.has(gl)) return
         cache.add(gl)
+
+        programs.push(program)
+        onBeforeDrawHandlers.forEach((handler) => program.onBeforeDraw(handler))
 
         requestRenders.add(() => !gl.isPending && callback?.() !== false && gl.requestRender())
       },
@@ -226,17 +221,17 @@ export const uniform = new Proxy({} as UniformProxy, {
         __: {
           requestRender: __.requestRender,
           notify: __.notify,
-          bind: (options) => {
-            const uniform = options.virtualProgram.registerUniform(options.location, get)
-            __.bind(options, () => {
+          bind: (gl, location, program, virtualProgram) => {
+            const uniform = virtualProgram.registerUniform(location, get)
+            __.bind(gl, program, virtualProgram, () => {
               if (uniform.dirty) return false
               uniform.dirty = true
             })
             return token
           },
           template: (name: string) => `uniform ${type} ${name};`,
-          getLocation: ({ gl, program, name }) => gl.ctx.getUniformLocation(program, name)!,
-          update: ({ gl, virtualProgram, location }) => {
+          getLocation: (gl, program, name) => gl.ctx.getUniformLocation(program, name)!,
+          update: (gl, location, virtualProgram) => {
             const uniform = virtualProgram.registerUniform(location, get)
 
             if (uniform.value === get() && !uniform.dirty) {
@@ -325,13 +320,13 @@ export const attribute = new Proxy({} as AttributeProxy, {
         set,
         subscribe,
         __: {
-          bind: (options) => {
-            __.bind(options, () => {
-              options.virtualProgram.dirtyAttribute(options.location as number)
+          bind: (gl, location, program, virtualProgram) => {
+            __.bind(gl, program, virtualProgram, () => {
+              virtualProgram.dirtyAttribute(location as number)
             })
             return token
           },
-          update: ({ gl, virtualProgram, location }) => {
+          update: (gl, location, virtualProgram) => {
             const buffer = virtualProgram.registerBuffer(get(), {
               usage: 'STATIC_DRAW',
               target: 'ARRAY_BUFFER',
@@ -352,7 +347,7 @@ export const attribute = new Proxy({} as AttributeProxy, {
             gl.ctx.enableVertexAttribArray(location as number)
           },
           template: (name) => `in ${type} ${name};`,
-          getLocation: ({ gl, program, name }) => gl.ctx.getAttribLocation(program, name)!,
+          getLocation: (gl, program, name) => gl.ctx.getAttribLocation(program, name)!,
         },
       }
       return token
@@ -396,8 +391,8 @@ export type BufferToken<T = Float32Array> = {
   get: Accessor<T>
   subscribe: (callback: (value: T) => void) => () => void
   __: {
-    bind: (options: { gl: GL; program: Program; virtualProgram: VirtualProgram }) => BufferToken<T>
-    update: (options: { gl: GL; program: Program; virtualProgram: VirtualProgram }) => BufferToken<T>
+    bind: (gl: GL, program: Program, virtualProgram: VirtualProgram) => BufferToken<T>
+    update: (gl: GL, program: Program, virtualProgram: VirtualProgram) => BufferToken<T>
   }
 }
 
@@ -416,11 +411,11 @@ export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: Bu
     set,
     subscribe,
     __: {
-      bind: (options) => {
-        __.bind(options)
+      bind: (gl, program, virtualProgram) => {
+        __.bind(gl, program, virtualProgram)
         return token
       },
-      update: ({ gl, virtualProgram }) => {
+      update: (gl, program, virtualProgram) => {
         const buffer = virtualProgram.registerBuffer(get(), options)
 
         // NOTE: maybe we can prevent having to do unnecessary binds here?

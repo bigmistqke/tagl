@@ -139,13 +139,12 @@ class Program {
   visible: boolean
   glProgram: WebGLProgram
 
-  private _config: Config
-  private _fragmentConfig: Config & { locations: GLLocation[] }
-  private _glRecord: { value: { program: WebGLProgram | undefined }; count: number; dirty: boolean }
+  private _glRecord: { value: { program: WebGLProgram | undefined }; dirty: boolean }
   private _indicesBuffer: BufferToken<Uint16Array> | undefined
   private _onBeforeDrawHandlers: (() => void)[]
   private _options: ProgramOptions
-  private _vertexConfig: Config & { locations: GLLocation[] }
+  locations: { vertex: GLLocation[]; fragment: GLLocation[] }
+  virtualProgram: VirtualProgram
 
   constructor(options: ProgramOptions) {
     this._options = options
@@ -154,29 +153,18 @@ class Program {
     const { glProgram, locations } = ProgramRegistry.getInstance(options.gl).register(options.vertex, options.fragment)
       .value as ProgramRecord
 
-    const virtualProgram = getVirtualProgram(glProgram)
+    this.glProgram = glProgram
+    this.locations = locations
+
+    this.virtualProgram = getVirtualProgram(glProgram)
 
     this.glProgram = glProgram
     this.visible = true
     this._onBeforeDrawHandlers = []
 
-    this._config = {
-      gl: options.gl,
-      virtualProgram,
-      program: this,
-    }
-    this._vertexConfig = {
-      ...this._config,
-      locations: locations.vertex,
-    }
-    this._fragmentConfig = {
-      ...this._config,
-      locations: locations.fragment,
-    }
-
     options.gl.ctx.useProgram(glProgram)
-    options.vertex.bind(this._vertexConfig)
-    options.fragment.bind(this._fragmentConfig)
+    options.vertex.bind(options.gl, locations.vertex, this, this.virtualProgram)
+    options.fragment.bind(options.gl, locations.fragment, this, this.virtualProgram)
 
     if (options.indices) {
       this._indicesBuffer = (
@@ -186,10 +174,10 @@ class Program {
               target: 'ELEMENT_ARRAY_BUFFER',
               usage: 'STATIC_DRAW',
             })
-      ).__.bind(this._config)
+      ).__.bind(options.gl, this, this.virtualProgram)
     } else {
       if (typeof options.count === 'object') {
-        options.count.__.bind(this._config)
+        options.count.__.bind(options.gl, this, this.virtualProgram)
       }
     }
   }
@@ -209,12 +197,11 @@ class Program {
     }
 
     this._onBeforeDrawHandlers.forEach((handler) => handler())
-    this._options.vertex.update(this._vertexConfig)
-    this._options.fragment.update(this._fragmentConfig)
+    this._options.vertex.update(this._options.gl, this.virtualProgram, this.locations.vertex)
+    this._options.fragment.update(this._options.gl, this.virtualProgram, this.locations.fragment)
 
     if (this._options.indices) {
-      this._indicesBuffer!.__.bind(this._config)
-      this._indicesBuffer!.__.update(this._config)
+      this._indicesBuffer!.__.update(this._options.gl, this, this.virtualProgram)
 
       this._options.gl.ctx.drawElements(
         this._options.gl.ctx.TRIANGLES,

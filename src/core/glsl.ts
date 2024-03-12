@@ -11,43 +11,16 @@ export const glsl = function (template: TemplateStringsArray, ...tokens: Token<a
     [GLSL]: true,
     compilation,
     template,
-    getLocations: (options: { gl: GL; program: WebGLProgram }) =>
-      tokens.map((token, index) => token.__.getLocation({ ...options, name: names[index]! })),
-    bind: ({
-      gl,
-      locations,
-      program,
-      virtualProgram,
-    }: {
-      gl: GL
-      program: Program
-      virtualProgram: VirtualProgram
-      locations: GLLocation[]
-    }) => {
+    getLocations: (gl: GL, program: WebGLProgram) =>
+      tokens.map((token, index) => token.__.getLocation(gl, program, names[index]!)),
+    bind: (gl: GL, locations: GLLocation[], program: Program, virtualProgram: VirtualProgram) => {
       for (let index = 0; index < tokens.length; index++) {
-        tokens[index]!.__.bind({
-          location: locations[index]!,
-          gl,
-          virtualProgram,
-          program,
-        })
+        tokens[index]!.__.bind(gl, locations[index]!, program, virtualProgram)
       }
     },
-    update: ({
-      locations,
-      gl,
-      virtualProgram,
-    }: {
-      gl: GL
-      virtualProgram: VirtualProgram
-      locations: GLLocation[]
-    }) => {
+    update: (gl: GL, virtualProgram: VirtualProgram, locations: GLLocation[]) => {
       for (let index = 0; index < tokens.length; index++) {
-        tokens[index]!.__.update({
-          location: locations[index]!,
-          gl,
-          virtualProgram,
-        })
+        tokens[index]!.__.update(gl, locations[index]!, virtualProgram)
       }
     },
   }

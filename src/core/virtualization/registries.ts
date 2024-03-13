@@ -1,6 +1,6 @@
 import zeptoid from 'zeptoid'
 
-import { GL, glsl } from 'src/core'
+import { GL, Program } from 'src/core'
 import { compile } from '../compilation'
 import { RegistryBase } from '../data-structures/registry'
 import { Token } from '../tokens'
@@ -91,19 +91,25 @@ export class ProgramRegistry extends RegistryBase<
   constructor(private gl: GL) {
     super()
   }
-  register(vertex: ReturnType<typeof glsl>, fragment: ReturnType<typeof glsl>) {
+  register(program: Program) {
     return super
-      ._register(vertex.template, () => new RegistryBase<TemplateStringsArray, ProgramRecord>())
-      .value._register(fragment.template, () => {
-        const glProgram = createWebGLProgram(this.gl.ctx, vertex.compilation.code, fragment.compilation.code)
+      ._register(program.vertex.template, () => new RegistryBase<TemplateStringsArray, ProgramRecord>())
+      .value._register(program.fragment.template, () => {
+        const glProgram = createWebGLProgram(
+          this.gl.ctx,
+          program.vertex.compilation.code,
+          program.fragment.compilation.code
+        )
 
         createVirtualProgram(this.gl.ctx, glProgram)
+
+        program.glProgram = glProgram
 
         return {
           glProgram,
           locations: {
-            vertex: vertex.getLocations(this.gl, glProgram),
-            fragment: fragment.getLocations(this.gl, glProgram),
+            vertex: program.vertex.getLocations(program),
+            fragment: program.fragment.getLocations(program),
           },
         }
       })

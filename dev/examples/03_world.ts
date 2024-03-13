@@ -1,6 +1,6 @@
-import { mat4 } from 'gl-matrix'
+import { mat4, vec3 } from 'gl-matrix'
 import { glsl } from 'src/core'
-import { createPlane, createScene } from 'world'
+import { createCube, createScene } from 'world'
 
 const canvas = document.createElement('canvas')
 document.body.appendChild(canvas)
@@ -9,9 +9,9 @@ const scene = createScene(canvas)
 scene.autosize()
 
 //prettier-ignore
-const plane = createPlane({
+const cube = createCube({
   color: new Float32Array([1, 0, 0]),
-  matrix: mat4.create() as Float32Array,
+  matrix: mat4.create(),
   fragment: ({color}) => glsl`#version 300 es
     precision highp float;
     out vec4 color;
@@ -19,18 +19,25 @@ const plane = createPlane({
       color = vec4(${color}, 1.);
     }`
 })
-plane.color.subscribe((value) => {
-  console.log('value', value)
-})
 
 scene.camera.set((camera) => mat4.translate(camera, camera, [0, 0, -1]))
-scene.add(plane)
+cube.bind(scene)
 
-setTimeout(() => {
-  plane.color.set((color) => {
-    color[0] = 0
-    color[1] = 1
-    color[2] = 0
-    return color
+const colors = [
+  [1, 0, 0],
+  [0, 1, 0],
+] as const
+let toggle: 0 | 1 = 0
+
+setInterval(() => {
+  toggle = (toggle + 1) % 2
+  cube.color.set((color) => vec3.set(color, ...colors[toggle]))
+}, 500)
+
+scene.onLoop((time) => {
+  cube.matrix.set((matrix) => {
+    mat4.rotateX(matrix, matrix, 0.01 * Math.sin(time / 1000))
+    mat4.rotateY(matrix, matrix, 0.01)
+    return matrix
   })
-}, 1000)
+})

@@ -12,7 +12,6 @@ export class ReferenceCount<TData> {
   delete(data: TData) {
     const count = this.map.get(data)
     if (!count) return
-
     if (count === 1) {
       this.map.delete(data)
       this.array = Array.from(this.map.keys())

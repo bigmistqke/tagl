@@ -1,22 +1,149 @@
 import { mat4, vec3 } from 'gl-matrix'
 
-import { GL, Program, ShaderToken, attribute, createGL, glsl, isShader, uniform } from '../core'
+import { GL, Program, ShaderToken, attribute, glsl, isShader, uniform } from '../core'
 
 import { Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, isToken } from '../core/tokens'
 import { Mat4, Vec3 } from '../core/types'
-import { traverse } from './utils'
+import { traverseParent } from './utils'
 
-export interface Object3D {
-  /** local matrix */
-  matrix: Token<mat4>
-  bind: (parent: Object3D | Scene) => Object3D
-  unbind: () => void
-  __: {
-    children: Set<Object3D>
-    parent: Scene | Object3D | undefined
-    mount: () => void
-    unmount: () => void
-    matrix: Token<mat4>
+/**********************************************************************************/
+/*                                                                                */
+/*                                    NODE3D                                      */
+/*                                                                                */
+/**********************************************************************************/
+
+export class Node3D {
+  localMatrix: Token<Mat4>
+  dirty = true
+  worldMatrix: Token<mat4>
+  children: Node3D[] = []
+  parent: Node3D | Origin3D | undefined = undefined
+
+  origin: Origin3D | undefined
+
+  private _onMountHandlers: (() => void)[] = []
+  private _onCleanupHandlers: (() => void)[] = []
+  private _onUpdateHandlers: (() => void)[] = []
+
+  constructor(public object: Shape) {
+    this.worldMatrix = uniform.mat4(mat4.clone(object.matrix.get()))
+    this.worldMatrix.onBind((program) => {
+      this.localMatrix.subscribe(() => program.gl.requestRender())
+    })
+
+    this.localMatrix = object.matrix
+    this.localMatrix.subscribe(this._updateDirty.bind(this))
+  }
+
+  onMount(callback: () => void) {
+    this._onMountHandlers.push(callback)
+    return () => {
+      console.error('TODO')
+    }
+  }
+  onCleanup(callback: () => void) {
+    this._onCleanupHandlers.push(callback)
+    return () => {
+      console.error('TODO')
+    }
+  }
+  onUpdate(callback: () => void) {
+    this._onUpdateHandlers.push(callback)
+    return () => {
+      console.error('TODO')
+    }
+  }
+
+  bind(parent: Node3D | Origin3D) {
+    parent.children.push(this)
+    this.parent = parent
+
+    const scene = traverseParent(this)
+
+    this._traverseChildren((node) => node.mount(scene))
+
+    if (this.dirty) {
+      const scene = getScene(this.object)
+      if (scene) {
+        scene.node.nodesToUpdate.push(this)
+        this._traverseChildren((node) => {
+          if (node.dirty) return false
+          node.dirty = true
+          scene.node.nodesToUpdate.push(node)
+        })
+      }
+    }
+    return this
+  }
+  unbind() {
+    this._traverseChildren((node) => node.cleanup())
+    this.cleanup()
+    if (this.parent) {
+      this.parent.children.findIndex((child) => child === this)
+    }
+
+    this.parent = undefined
+  }
+
+  mount(origin: Origin3D | undefined) {
+    this.origin = origin
+    this._onMountHandlers.forEach((callback) => callback())
+  }
+
+  cleanup() {
+    this.origin = undefined
+    this._onCleanupHandlers.forEach((callback) => callback())
+  }
+
+  update() {
+    this.worldMatrix.set((matrix) => mat4.multiply(matrix, this.parent!.worldMatrix.get(), this.localMatrix.get()))
+    this._onUpdateHandlers.forEach((callback) => callback())
+    this.dirty = false
+  }
+
+  private _updateDirty() {
+    if (this.dirty) return
+
+    this.dirty = true
+
+    const origin = this.origin
+
+    if (origin instanceof Origin3D) {
+      origin.nodesToUpdate.push(this)
+      this._traverseChildren((node) => {
+        if (node.dirty) return false
+        node.dirty = true
+        origin.nodesToUpdate.push(node)
+      })
+    } else {
+      this._traverseChildren((node) => {
+        if (node.dirty) return false
+        node.dirty = true
+      })
+    }
+  }
+  private _traverseChildren(callback: (object3D: Node3D) => false | void) {
+    if (!callback(this)) return false
+    if (this.children.find((child) => child._traverseChildren(callback) === false)) return false
+  }
+}
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                    ORIGIN3D                                    */
+/*                                                                                */
+/**********************************************************************************/
+
+export class Origin3D {
+  children: Node3D[] = []
+  nodesToUpdate: Node3D[] = []
+  worldMatrix = atom(mat4.create())
+  constructor(public scene: Scene) {}
+  update(): void {
+    this.nodesToUpdate.forEach((node) => {
+      node.update()
+    })
+    this.nodesToUpdate.length = 0
   }
 }
 
@@ -26,60 +153,44 @@ export interface Object3D {
 /*                                                                                */
 /**********************************************************************************/
 
-const getScene = (object: Object3D | Scene): Scene | undefined => {
-  if ('parent' in object.__) {
-    if (object.__.parent) return getScene(object.__.parent)
-  } else {
-    return object as Scene
-  }
-}
-
-type Scene = GL & {
-  camera: Token<mat4>
-  matrix: Token<mat4>
-  perspective: Token<mat4>
-  stack: Atom<Program[]>
-  __: {
-    children: Set<Object3D>
-    matrix: Token<mat4>
-  }
+const getScene = (object: Scene | Shape) => {
+  let parentNode = traverseParent(object.node)
+  return parentNode && 'scene' in parentNode ? parentNode.scene : undefined
 }
 
 export const createScene = (canvas = document.createElement('canvas')) => {
-  const getPerspective = () =>
-    mat4.perspective(mat4.create(), Math.PI / 2, canvas.clientWidth / canvas.clientHeight, 0, Infinity)
+  return new Scene(canvas)
+}
 
-  const gl = createGL(canvas)
+export class Scene extends GL {
+  camera = uniform.mat4(mat4.create())
+  node = new Origin3D(this)
 
-  const camera = uniform.mat4(mat4.create())
-  const matrix = uniform.mat4(mat4.create())
-  const perspective = uniform.mat4(getPerspective())
+  perspective: Token<mat4>
 
-  gl.onResize(() => perspective.set(getPerspective()))
-
-  const stack = atom<Program[]>([])
-
-  gl.setStack(stack.get())
-  stack.subscribe(() => gl.requestRender())
-
-  const scene: Scene = {
-    ...gl,
-    stack,
-    camera,
-    matrix,
-    perspective,
-    __: {
-      children: new Set(),
-      matrix,
-    },
+  constructor(public canvas: HTMLCanvasElement) {
+    super(canvas)
+    this.perspective = uniform.mat4(this._perspective())
+    this.onResize(() => this.perspective.set(this._perspective))
+    this.onBeforeRender(() => {
+      this.node.update()
+      return true
+    })
   }
 
-  return scene
+  private _perspective = (matrix?: mat4) =>
+    mat4.perspective(
+      matrix || mat4.create(),
+      Math.PI / 2,
+      this.canvas.clientWidth / this.canvas.clientHeight,
+      0,
+      Infinity
+    )
 }
 
 /**********************************************************************************/
 /*                                                                                */
-/*                                       SHAPE                                    */
+/*                                      SHAPE                                      */
 /*                                                                                */
 /**********************************************************************************/
 
@@ -108,205 +219,138 @@ type ShapeOptionsCount = ShapeOptionsBase & {
   indices?: never
 }
 type ShapeOptionsIndices = ShapeOptionsBase & {
-  indices: number[] | BufferToken<Uint16Array> | Atom<Uint16Array>
+  indices: Uint16Array | BufferToken<Uint16Array> | Atom<Uint16Array>
   count?: never
 }
 export type ShapeOptions = ShapeOptionsCount | ShapeOptionsIndices
 
-export interface Shape extends Object3D {
-  bind: (parent: Object3D | Scene) => Shape
-  color: Token<Vec3>
-  vertices: Token<Float32Array>
-  matrix: Token<Mat4>
-  uv: Token<Float32Array>
+export const createShape = <TOptions extends ShapeOptions>(options: TOptions) => {
+  return new Shape(options)
 }
 
-const dirt = <TInput extends Token<any> | Atom<any>>(
-  input: TInput,
-  callback: (value: ReturnType<TInput['get']>) => ReturnType<TInput['get']>
-) => {
-  let shouldUpdate = true
-  const check = () => {
-    if (!shouldUpdate) return
-    input.set((value, { preventRender }) => {
-      preventRender()
-      return callback(value)
-    })
-    shouldUpdate = false
+export class Shape {
+  cache = new Map<Scene, Program>()
+  indices: BufferToken<Uint16Array> | undefined
+  color: Token<Float32Array | [number, number, number], number | WebGLUniformLocation>
+  vertices: Token<Float32Array, number | WebGLUniformLocation>
+  uv: Token<Float32Array, number | WebGLUniformLocation>
+  node: Node3D
+
+  count: Atom<number> | Atom<number | undefined>
+
+  /** local matrix */
+  matrix: Token<mat4>
+
+  private _program: Program | undefined = undefined
+
+  constructor(private options: ShapeOptions) {
+    this.color = uniform.vec3(options.color)
+    this.vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
+    this.uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
+    this.matrix = isToken(options.matrix) ? options.matrix : uniform.mat4(options.matrix)
+
+    this.count = isAtom(options.count) ? options.count : atom(options.count)
+    this.indices = options.indices
+      ? isBufferToken(options.indices)
+        ? options.indices
+        : buffer(options.indices, {
+            target: 'ELEMENT_ARRAY_BUFFER',
+            usage: 'STATIC_DRAW',
+          })
+      : undefined
+
+    this.node = new Node3D(this)
+    this.node.onMount(this._mount.bind(this))
+    this.node.onCleanup(this._cleanup.bind(this))
   }
-  const dirty = () => {
-    if (shouldUpdate) return
-    shouldUpdate = true
-    input.__.requestRender()
+
+  bind(parent: Shape | Scene) {
+    this.node.bind(parent.node)
+    return this
   }
-  input.onBeforeDraw(check)
-  return { ...input, check, dirty }
-}
-
-export const createShape = <TOptions extends ShapeOptions>(
-  options: TOptions
-): TOptions['indices'] extends never ? Shape : Shape & { indices: BufferToken<Uint16Array> } => {
-  const color = uniform.vec3(options.color)
-  const vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
-  const uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
-
-  let shouldUpdateMatrix = true
-  const dirtyMatrix = () => {
-    if (shouldUpdateMatrix) return
-    shouldUpdateMatrix = true
-    matrix.__.requestRender()
+  unbind() {
+    return this.node.unbind
   }
 
-  const matrix = uniform.mat4(mat4.clone('get' in options.matrix ? options.matrix.get() : options.matrix))
-  matrix.onBeforeDraw(() => {
-    if (!shouldUpdateMatrix) return
-    const parentMatrix = shape.__.parent?.__.matrix
-    if (!parentMatrix) return
-    matrix.set((matrix, { preventRender }) => {
-      preventRender()
-      return mat4.multiply(matrix, parentMatrix.get(), localMatrix.get())
-    })
-    shouldUpdateMatrix = false
-  })
+  private _mount() {
+    const scene = getScene(this)
 
-  const localMatrix = isToken(options.matrix) ? options.matrix : uniform.mat4(options.matrix)
-  localMatrix.subscribe(dirtyMatrix)
+    if (!scene) return
 
-  const indicesBuffer = options.indices
-    ? isBufferToken(options.indices)
-      ? options.indices
-      : buffer(isAtom(options.indices) ? options.indices : new Uint16Array(options.indices), {
-          target: 'ELEMENT_ARRAY_BUFFER',
-          usage: 'STATIC_DRAW',
+    const cached = this._program
+    if (cached) {
+      this._program = cached
+      scene.stack.set((stack) => {
+        stack.push(cached)
+        return stack
+      })
+      return
+    }
+
+    const vertex = isShader(this.options.vertex)
+      ? this.options.vertex
+      : typeof this.options.vertex === 'function'
+      ? this.options.vertex({
+          camera: scene.camera,
+          perspective: scene.perspective,
+          color: this.color,
+          vertices: this.vertices,
+          matrix: this.node.worldMatrix,
+          uv: this.uv,
         })
-    : undefined
-
-  const cache = new Map<Scene, Program>()
-  const createProgram = (scene: Scene) => {
-    const cached = cache.get(scene)
-    if (cached) return cached
-
-    const { camera, perspective, createProgram } = scene
-
-    const vertex = isShader(options.vertex)
-      ? options.vertex
-      : typeof options.vertex === 'function'
-      ? options.vertex({ camera, perspective, color, vertices, matrix, uv })
       : glsl`#version 300 es
-          precision highp float;
-          void main(void) {
-            gl_Position = ${perspective} * ${camera} * ${matrix} * vec4(${vertices} * 0.1, 1);
-            gl_PointSize = 5.;
-          }`
+        precision highp float;
+        void main(void) {
+          gl_Position = ${scene.perspective} * ${scene.camera} * ${this.node.worldMatrix} * vec4(${this.vertices} * 0.1, 1);
+          gl_PointSize = 5.;
+        }`
 
-    const fragment = isShader(options.fragment)
-      ? options.fragment
-      : typeof options.fragment === 'function'
-      ? options.fragment({ camera, perspective, color, vertices, matrix, uv })
+    const fragment = isShader(this.options.fragment)
+      ? this.options.fragment
+      : typeof this.options.fragment === 'function'
+      ? this.options.fragment({
+          camera: scene.camera,
+          perspective: scene.perspective,
+          color: this.color,
+          vertices: this.vertices,
+          matrix: this.node.worldMatrix,
+          uv: this.uv,
+        })
       : glsl`#version 300 es
-          precision highp float;
-          out vec4 color;
-          void main(void) {
-            color = vec4(${color}, 1.);
-          }`
+        precision highp float;
+        out vec4 color;
+        void main(void) {
+          color = vec4(${this.color}, 1.);
+        }`
 
-    const programOptions = indicesBuffer
-      ? { vertex, fragment, indices: indicesBuffer }
-      : { vertex, fragment, count: options.count! }
+    const programOptions = this.indices
+      ? { vertex, fragment, indices: this.indices }
+      : { vertex, fragment, count: this.options.count! }
 
-    const program = createProgram(programOptions)
-    cache.set(scene, program)
+    const program = (this._program = scene.createProgram(programOptions))
 
-    return program
+    scene.stack.set((stack) => {
+      stack.push(program)
+      return stack
+    })
   }
 
-  const current: {
-    cleanup: (() => void) | undefined
-    program: Program | undefined
-    scene: Scene | undefined
-  } = {
-    cleanup: undefined,
-    program: undefined,
-    scene: undefined,
+  private _cleanup() {
+    const scene = getScene(this)
+
+    if (!scene || !this._program) return
+
+    scene.stack.set((stack, flags) => {
+      const index = stack.findIndex((program) => program === this._program)
+      if (index !== -1) {
+        stack.splice(index, 1)
+      } else {
+        flags.preventRender()
+        flags.preventNotification()
+      }
+      return stack
+    })
   }
-
-  const shape: Shape = {
-    color,
-    matrix: localMatrix,
-    vertices,
-    uv,
-    bind: (parent) => {
-      parent.__.children.add(shape)
-      shape.__.parent = parent
-      current.cleanup = parent.__.matrix.subscribe(dirtyMatrix)
-      traverse(shape, (object3D) => object3D.__.mount())
-      return shape
-    },
-    unbind: () => {
-      shape.__.unmount()
-      traverse(shape, (object3D) => object3D.__.unmount())
-
-      shape.__.parent?.__.children.delete(shape)
-      shape.__.parent = undefined
-
-      current.cleanup?.()
-
-      current.scene = undefined
-      current.cleanup = undefined
-      current.program = undefined
-    },
-    __: {
-      children: new Set(),
-      parent: undefined,
-      matrix,
-      mount: () => {
-        if (!shape.__.parent) return
-
-        current.scene = getScene(shape.__.parent)
-
-        if (!current.scene) return
-
-        const currentProgram = createProgram(current.scene)
-        current.program = currentProgram
-
-        current.scene.stack.set((stack) => {
-          stack.push(currentProgram)
-          return stack
-        })
-      },
-      unmount: () => {
-        if (!shape.__.parent) return
-
-        current.scene = getScene(shape.__.parent)
-
-        if (!current.scene) return
-
-        const currentProgram = current.program
-
-        if (!currentProgram) return
-
-        current.scene.stack.set((stack, flags) => {
-          const index = stack.findIndex((program) => program === currentProgram)
-          if (index !== -1) {
-            stack.splice(index, 1)
-          } else {
-            flags.preventRender()
-            flags.preventNotification()
-          }
-          return stack
-        })
-      },
-    },
-  }
-
-  if (options.indices) {
-    return {
-      ...shape,
-      indices: indicesBuffer!,
-    } as Shape & { indices: BufferToken<Uint16Array> }
-  }
-  // @ts-expect-error
-  return shape
 }
 
 /**********************************************************************************/
@@ -318,7 +362,7 @@ export const createShape = <TOptions extends ShapeOptions>(
 const _plane = {
   vertices: new Float32Array([-0.5, -0.5, 0.0, 0.5, -0.5, 0.0, -0.5, 0.5, 0.0, 0.5, 0.5, 0.0]),
   uv: new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]),
-  indices: [0, 1, 2, 3, 2, 1],
+  indices: new Uint16Array([0, 1, 2, 3, 2, 1]),
 }
 export const createPlane = (options: Omit<ShapeOptions, 'vertices' | 'indices' | 'uv' | 'count'>) =>
   createShape({
@@ -380,7 +424,7 @@ const _cube = {
     1.0, 0.0,  // Vertex 22
     0.0, 0.0   // Vertex 23
   ]),
-  indices:  [
+  indices:  new Uint16Array([
     // Front face
     0,   1,  2,  0,  2,  3,
     // Back face
@@ -393,7 +437,7 @@ const _cube = {
     16, 17, 18, 16, 18, 19,
     // Left face
     20, 21, 22, 20, 22, 23,
-  ],
+  ]),
 }
 export const createCube = (options: Omit<ShapeOptions, 'vertices' | 'indices' | 'uv' | 'count'>) =>
   createShape({
@@ -412,24 +456,56 @@ const cache = {
   indices: [] as Uint16Array[],
 }
 
-export const createDisc = (
-  options: Omit<ShapeOptions, 'vertices' | 'indices' | 'uv'> & {
-    radius: number
-    segments: number
+export class Disc {
+  indices: Atom<Uint16Array>
+  node: Node3D
+  radius: Atom<number>
+  segments: Atom<number>
+  shape: Shape
+  uv: Atom<Float32Array>
+  vertices: Atom<Float32Array>
+  matrix: Token<mat4>
+
+  constructor(
+    options: Omit<ShapeOptions, 'vertices' | 'indices' | 'uv'> & {
+      radius: number
+      segments: number
+    }
+  ) {
+    this.radius = atom(options.radius)
+    this.segments = atom(options.segments)
+
+    this.vertices = atom(new Float32Array())
+    this.uv = atom(new Float32Array())
+    this.indices = atom(new Uint16Array())
+
+    effect(this.update.bind(this), [this.radius, this.segments])
+
+    this.shape = createShape({
+      vertices: this.vertices,
+      uv: this.uv,
+      indices: this.indices,
+      matrix: options.matrix,
+      color: options.color,
+    })
+    this.node = this.shape.node
+    this.matrix = this.shape.matrix
   }
-) => {
-  const radius = atom(options.radius)
-  const segments = atom(options.segments)
 
-  const vertices = atom(new Float32Array())
-  const uv = atom(new Float32Array())
-  const indices = atom(new Uint16Array())
+  bind(object: Scene | Shape | { shape: Shape }) {
+    this.shape.bind('shape' in object ? object.shape : object)
+    return this
+  }
 
-  const update = () => {
-    const size = segments.get() + 1
+  unbind() {
+    this.shape.unbind()
+  }
 
-    vertices.set(() => {
-      const cached = cache.vertices[segments.get()]
+  update() {
+    const size = this.segments.get() + 1
+
+    this.vertices.set(() => {
+      const cached = cache.vertices[this.segments.get()]
       if (cached) return cached
 
       const vertices = new Float32Array(size * 3)
@@ -440,17 +516,22 @@ export const createDisc = (
           vec3.set(vertex, 0, 0, 0)
           continue
         }
-        const ratio = (index / 3 - 1) / segments.get()
-        vec3.set(vertex, Math.sin(ratio * Math.PI * 2) * radius.get(), Math.cos(ratio * Math.PI * 2) * radius.get(), 0)
+        const ratio = (index / 3 - 1) / this.segments.get()
+        vec3.set(
+          vertex,
+          Math.sin(ratio * Math.PI * 2) * this.radius.get(),
+          Math.cos(ratio * Math.PI * 2) * this.radius.get(),
+          0
+        )
       }
 
-      uv.set(vertices)
+      this.uv.set(vertices)
 
-      return (cache.vertices[segments.get()] = vertices)
+      return (cache.vertices[this.segments.get()] = vertices)
     })
 
-    indices.set(() => {
-      const cached = cache.indices[segments.get()]
+    this.indices.set(() => {
+      const cached = cache.indices[this.segments.get()]
       if (cached) return cached
 
       const indices: number[] = []
@@ -462,23 +543,16 @@ export const createDisc = (
         }
       }
 
-      return (cache.indices[segments.get()] = new Uint16Array(indices))
+      return (cache.indices[this.segments.get()] = new Uint16Array(indices))
     })
   }
+}
 
-  effect(update, [radius, segments])
-
-  const shape = createShape({
-    vertices,
-    uv,
-    indices,
-    matrix: options.matrix,
-    color: options.color,
-  })
-
-  return {
-    ...shape,
-    radius,
-    segments,
+export const createDisc = (
+  options: Omit<ShapeOptions, 'vertices' | 'indices' | 'uv'> & {
+    radius: number
+    segments: number
   }
+) => {
+  return new Disc(options)
 }

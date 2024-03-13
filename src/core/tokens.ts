@@ -1,5 +1,4 @@
 import { GL, Program } from '.'
-import { ReferenceCount } from './data-structures/reference-count'
 import {
   Accessor,
   DataType,
@@ -15,7 +14,6 @@ import {
   Vec4,
 } from './types'
 import { dataTypeToSize, uniformDataTypeToFunctionName } from './utils'
-import { VirtualProgram } from './virtualization/virtual-program'
 
 /**********************************************************************************/
 /*                                                                                */
@@ -81,14 +79,15 @@ export type Token<T = Float32Array, TLocation = WebGLUniformLocation | number> =
   set: Setter<T>
   get: Accessor<T>
   onBeforeDraw: (callback: () => void) => () => void
+  onBind: (handler: (program: Program) => void) => () => void
   subscribe: (callback: (value: T) => void) => () => void
   __: {
-    bind: (gl: GL, location: TLocation, program: Program, virtualProgram: VirtualProgram) => Token<T, TLocation>
-    getLocation: (gl: GL, program: WebGLProgram, name: string) => TLocation
+    bind: (program: Program, location: TLocation) => Token<T, TLocation>
+    getLocation: (program: Program, name: string) => TLocation
     notify: () => void
     requestRender: () => void
     template: (name: string) => string | undefined
-    update: (gl: GL, location: TLocation, virtualProgram: VirtualProgram) => void
+    update: (program: Program, location: TLocation) => void
   }
 }
 
@@ -102,10 +101,11 @@ export type Atom<T = any> = {
   [$TYPE]: 'atom'
   set: Setter<T>
   get: Accessor<T>
-  onBeforeDraw: (callback: () => void) => () => void
+  onBeforeDraw: (handler: () => void) => () => void
+  onBind: (handler: (program: Program) => void) => () => void
   subscribe: (callback: (value: T) => void) => () => void
   __: {
-    bind: (gl: GL, program: Program, virtualProgram: VirtualProgram, callback?: () => false | void) => void
+    bind: (program: Program, callback?: () => false | void) => void
     requestRender: () => void
     notify: () => void
   }
@@ -121,11 +121,16 @@ export const atom = <T>(value: T) => {
     preventRender: () => (shouldRender = false),
   }
 
-  const subscriptions = new ReferenceCount<(value: T) => void>()
-  const requestRenders = new ReferenceCount<() => void>()
-  const requestRender = () => requestRenders.forEach((callback) => callback())
+  const subscriptions: ((value: T) => void)[] = []
+  const requestRenders: (() => void)[] = []
+  const requestRender = () => {
+    for (const requestRender of requestRenders) {
+      requestRender()
+    }
+  }
   const notify = () => subscriptions.forEach((callback) => callback(value))
   const onBeforeDrawHandlers: (() => void)[] = []
+  const onBindHandlers: ((program: Program) => void)[] = []
   const programs: Program[] = []
 
   const atom: Atom<T> = {
@@ -148,21 +153,36 @@ export const atom = <T>(value: T) => {
     onBeforeDraw: (callback: () => void) => {
       onBeforeDrawHandlers.push(callback)
       programs.forEach((program) => program.onBeforeDraw(callback))
+      return () => {
+        console.error('TODO')
+      }
+    },
+    onBind: (handler: (program: Program) => void) => {
+      onBindHandlers.push(handler)
       return () => {}
     },
     subscribe: (callback: (value: T) => void) => {
-      subscriptions.add(callback)
-      return () => subscriptions.delete(callback)
+      subscriptions.push(callback)
+      return () => {
+        console.error('TODO')
+        /* subscriptions.delete(callback) */
+      }
     },
     __: {
-      bind: (gl, program, virtualProgram, callback) => {
-        if (cache.has(gl)) return
-        cache.add(gl)
+      bind: (program, callback) => {
+        /* if (cache.has(program.gl)) return
+        cache.add(program.gl) */
+
+        onBindHandlers.forEach((handler) => handler(program))
 
         programs.push(program)
         onBeforeDrawHandlers.forEach((handler) => program.onBeforeDraw(handler))
 
-        requestRenders.add(() => !gl.isPending && callback?.() !== false && gl.requestRender())
+        requestRenders.push(() => {
+          // if (program.gl.isPending) return
+          if (callback?.() === false) return
+          program.gl.requestRender()
+        })
       },
       requestRender,
       notify,
@@ -210,7 +230,7 @@ export const uniform = new Proxy({} as UniformProxy, {
   get(target, type: string) {
     return (...[value, options]: UniformParameters) => {
       const functionName = uniformDataTypeToFunctionName(type)
-      const { __, get, subscribe, onBeforeDraw, set } = isAtom(value) ? value : atom<any>(value)
+      const { __, get, subscribe, onBeforeDraw, set, onBind } = isAtom(value) ? value : atom<any>(value)
 
       const token: Token<Exclude<typeof value, Atom>> = {
         [$TYPE]: 'token',
@@ -218,21 +238,22 @@ export const uniform = new Proxy({} as UniformProxy, {
         set,
         subscribe,
         onBeforeDraw,
+        onBind,
         __: {
           requestRender: __.requestRender,
           notify: __.notify,
-          bind: (gl, location, program, virtualProgram) => {
-            const uniform = virtualProgram.registerUniform(location, get)
-            __.bind(gl, program, virtualProgram, () => {
+          bind: (program, location) => {
+            const uniform = program.virtualProgram.registerUniform(location, get)
+            __.bind(program, () => {
               if (uniform.dirty) return false
               uniform.dirty = true
             })
             return token
           },
           template: (name: string) => `uniform ${type} ${name};`,
-          getLocation: (gl, program, name) => gl.ctx.getUniformLocation(program, name)!,
-          update: (gl, location, virtualProgram) => {
-            const uniform = virtualProgram.registerUniform(location, get)
+          getLocation: (program, name) => program.gl.ctx.getUniformLocation(program.glProgram, name)!,
+          update: (program, location) => {
+            const uniform = program.virtualProgram.registerUniform(location, get)
 
             if (uniform.value === get() && !uniform.dirty) {
               return
@@ -243,10 +264,10 @@ export const uniform = new Proxy({} as UniformProxy, {
 
             if (type.includes('mat')) {
               // @ts-expect-error
-              gl.ctx[functionName](location, false, get())
+              program.gl.ctx[functionName](location, false, get())
             } else {
               // @ts-expect-error
-              gl.ctx[functionName](location, get())
+              program.gl.ctx[functionName](location, get())
             }
           },
         },
@@ -320,13 +341,13 @@ export const attribute = new Proxy({} as AttributeProxy, {
         set,
         subscribe,
         __: {
-          bind: (gl, location, program, virtualProgram) => {
-            __.bind(gl, program, virtualProgram, () => {
-              virtualProgram.dirtyAttribute(location as number)
+          bind: (program, location) => {
+            __.bind(program, () => {
+              program.virtualProgram.dirtyAttribute(location as number)
             })
             return token
           },
-          update: (gl, location, virtualProgram) => {
+          update: ({ virtualProgram, gl }, location) => {
             const buffer = virtualProgram.registerBuffer(get(), {
               usage: 'STATIC_DRAW',
               target: 'ARRAY_BUFFER',
@@ -347,7 +368,7 @@ export const attribute = new Proxy({} as AttributeProxy, {
             gl.ctx.enableVertexAttribArray(location as number)
           },
           template: (name) => `in ${type} ${name};`,
-          getLocation: (gl, program, name) => gl.ctx.getAttribLocation(program, name)!,
+          getLocation: (program, name) => program.gl.ctx.getAttribLocation(program.glProgram, name)!,
         },
       }
       return token
@@ -391,8 +412,8 @@ export type BufferToken<T = Float32Array> = {
   get: Accessor<T>
   subscribe: (callback: (value: T) => void) => () => void
   __: {
-    bind: (gl: GL, program: Program, virtualProgram: VirtualProgram) => BufferToken<T>
-    update: (gl: GL, program: Program, virtualProgram: VirtualProgram) => BufferToken<T>
+    bind: (program: Program) => BufferToken<T>
+    update: (program: Program) => BufferToken<T>
   }
 }
 
@@ -411,17 +432,17 @@ export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: Bu
     set,
     subscribe,
     __: {
-      bind: (gl, program, virtualProgram) => {
-        __.bind(gl, program, virtualProgram)
+      bind: (program) => {
+        __.bind(program)
         return token
       },
-      update: (gl, program, virtualProgram) => {
-        const buffer = virtualProgram.registerBuffer(get(), options)
+      update: (program) => {
+        const buffer = program.virtualProgram.registerBuffer(get(), options)
 
         // NOTE: maybe we can prevent having to do unnecessary binds here?
-        gl.ctx.bindBuffer(gl.ctx[options.target], buffer.value)
+        program.gl.ctx.bindBuffer(program.gl.ctx[options.target], buffer.value)
         if (buffer.dirty) {
-          gl.ctx.bufferData(gl.ctx[options.target], get(), gl.ctx[options.usage])
+          program.gl.ctx.bufferData(program.gl.ctx[options.target], get(), program.gl.ctx[options.usage])
           buffer.dirty = false
         }
 

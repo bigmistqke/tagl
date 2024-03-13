@@ -1,8 +1,7 @@
-import { GL, Program } from './create-gl'
+import { Program } from './create-gl'
 import { Token } from './tokens'
 import { GLLocation } from './types'
 import { shaderCompilationRegistry } from './virtualization/registries'
-import { VirtualProgram } from './virtualization/virtual-program'
 
 const GLSL = Symbol()
 export const glsl = function (template: TemplateStringsArray, ...tokens: Token<any>[]) {
@@ -11,16 +10,15 @@ export const glsl = function (template: TemplateStringsArray, ...tokens: Token<a
     [GLSL]: true,
     compilation,
     template,
-    getLocations: (gl: GL, program: WebGLProgram) =>
-      tokens.map((token, index) => token.__.getLocation(gl, program, names[index]!)),
-    bind: (gl: GL, locations: GLLocation[], program: Program, virtualProgram: VirtualProgram) => {
+    getLocations: (program: Program) => tokens.map((token, index) => token.__.getLocation(program, names[index]!)),
+    bind: (program: Program, locations: GLLocation[]) => {
       for (let index = 0; index < tokens.length; index++) {
-        tokens[index]!.__.bind(gl, locations[index]!, program, virtualProgram)
+        tokens[index]!.__.bind(program, locations[index]!)
       }
     },
-    update: (gl: GL, virtualProgram: VirtualProgram, locations: GLLocation[]) => {
+    update: (program: Program, locations: GLLocation[]) => {
       for (let index = 0; index < tokens.length; index++) {
-        tokens[index]!.__.update(gl, locations[index]!, virtualProgram)
+        tokens[index]!.__.update(program, locations[index]!)
       }
     },
   }

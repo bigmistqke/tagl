@@ -19,7 +19,8 @@
     "baseUrl": ".",
     "paths": {
       "src/*": ["src/*"],
-      "world": ["src/world/index.ts"]
+      "world": ["src/world/index.ts"],
+      "world/text": ["src/world/text/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist", "./dev"]

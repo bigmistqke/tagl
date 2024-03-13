@@ -1,41 +1,108 @@
 import { DequeMap } from './data-structures/deque-map'
-import { glsl } from './glsl'
-import { Atom, BufferToken, buffer, isAtom, isBufferToken } from './tokens'
+import { ShaderToken, glsl } from './glsl'
+import { Atom, BufferToken, atom, buffer, isAtom, isBufferToken } from './tokens'
 import { GLLocation } from './types'
 import { ProgramRegistry, glRegistry, type ProgramRecord } from './virtualization/registries'
 import { VirtualProgram, getVirtualProgram } from './virtualization/virtual-program'
 
 export const createGL = (canvas: HTMLCanvasElement) => {
-  const ctx = canvas.getContext('webgl2')
+  return new GL(canvas)
+}
 
-  let stack: (Program | Program[] | DequeMap<any, Program>)[] = []
+export class GL {
+  ctx: WebGL2RenderingContext
+  isPending = false
+  stack = atom<(Program | Program[] | DequeMap<any, Program>)[]>([])
+  private _scheduledRender = false
+  private _onResizeCallbacks = new Set<(canvas: HTMLCanvasElement) => void>()
+  private _onBeforeRenderCallbacks = new Set<() => void>()
+  private _onLoops: ((now: number) => void)[] = []
+  looping = false
 
-  if (!ctx) throw 'could not get context webgl2'
+  constructor(public canvas: HTMLCanvasElement) {
+    const ctx = canvas.getContext('webgl2')
+    if (!ctx) throw 'could not get context webgl2'
+    this.ctx = ctx
+    this.stack.subscribe(this.requestRender.bind(this))
+  }
 
-  const onLoops: ((now: number) => void)[] = [] //new Deque<(now: number) => void>()
-  let looping = false
+  onBeforeRender(callback: () => {}) {
+    this._onBeforeRenderCallbacks.add(callback)
+    return () => this._onBeforeRenderCallbacks.delete(callback)
+  }
+  onLoop(callback: (now: number) => void) {
+    this._onLoops.push(callback)
 
-  const loop = (now: number) => {
-    if (onLoops.length === 0) {
-      looping = false
+    if (this._onLoops.length === 1) {
+      this.looping = true
+      requestAnimationFrame(this.loop.bind(this))
+    }
+    return () => {
+      this._onLoops.splice(this._onLoops.indexOf(callback), -1)
+    }
+  }
+  onResize(callback: (canvas: HTMLCanvasElement) => void) {
+    this._onResizeCallbacks.add(callback)
+    return () => this._onResizeCallbacks.delete(callback)
+  }
+
+  autosize() {
+    const resizeObserver = new ResizeObserver(() => {
+      if (this.canvas instanceof OffscreenCanvas) {
+        throw 'can not autosize OffscreenCanvas'
+      }
+      this.canvas.width = this.canvas.clientWidth
+      this.canvas.height = this.canvas.clientHeight
+      this.ctx.viewport(0, 0, this.canvas.width, this.canvas.height)
+      this.requestRender()
+      this._onResizeCallbacks.forEach((callback) => callback(this.canvas))
+    })
+    resizeObserver.observe(this.canvas)
+  }
+  requestRender() {
+    if (this.isPending) {
+      this._scheduledRender = true
       return
     }
-    requestAnimationFrame(loop)
-    for (let i = 0; i < onLoops.length; i++) {
-      const node = onLoops[i]
+    this.isPending = true
+    if (this.looping) return
+    requestIdleCallback(this.render.bind(this))
+  }
+  createProgram(
+    options: {
+      vertex: ReturnType<typeof glsl>
+      fragment: ReturnType<typeof glsl>
+    } & (
+      | { count: number | Atom<number>; indices?: never }
+      | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
+    )
+  ) {
+    return new Program({ gl: this, ...options })
+  }
+
+  private loop(now: number) {
+    if (this._onLoops.length === 0) {
+      this.looping = false
+      return
+    }
+    requestAnimationFrame(this.loop.bind(this))
+    for (let i = 0; i < this._onLoops.length; i++) {
+      const node = this._onLoops[i]
       if (node) {
         node(now)
       }
     }
-    if (gl.isPending) render()
+    if (this.isPending) this.render()
   }
 
-  const render = async () => {
-    gl.isPending = false
-    gl.scheduledRender = false
+  private async render() {
+    this.isPending = false
+    this._scheduledRender = false
 
-    for (let i = 0; i < stack.length; i++) {
-      const element = stack[i]
+    this._onBeforeRenderCallbacks.forEach((callback) => callback())
+
+    for (let i = 0; i < this.stack.get().length; i++) {
+      const element = this.stack.get()[i]
       if (element instanceof DequeMap) {
         element.forEach((program) => program.value.draw())
       } else if (Array.isArray(element)) {
@@ -45,85 +112,8 @@ export const createGL = (canvas: HTMLCanvasElement) => {
       }
     }
 
-    if (gl.scheduledRender) render()
+    if (this._scheduledRender) this.render()
   }
-
-  const onResizeCallbacks = new Set<(canvas: HTMLCanvasElement) => void>()
-
-  const gl: {
-    autosize: () => void
-    onResize: (callback: (canvas: HTMLCanvasElement) => void) => () => void
-    ctx: WebGL2RenderingContext
-    setStack(...programs: (Program | Program[] | DequeMap<any, Program>)[]): void
-    isPending: boolean
-    scheduledRender: boolean
-    requestRender: () => void
-    createProgram: (options: Omit<ProgramOptions, 'gl'>) => Program
-    onLoop: (callback: (now: number) => void) => () => void
-  } = {
-    autosize: () => {
-      const resizeObserver = new ResizeObserver(() => {
-        if (canvas instanceof OffscreenCanvas) {
-          throw 'can not autosize OffscreenCanvas'
-        }
-        canvas.width = canvas.clientWidth
-        canvas.height = canvas.clientHeight
-        ctx.viewport(0, 0, canvas.width, canvas.height)
-        gl.requestRender()
-        onResizeCallbacks.forEach((callback) => callback(canvas))
-      })
-      resizeObserver.observe(canvas as HTMLCanvasElement)
-    },
-    onResize: (callback: (canvas: HTMLCanvasElement) => void) => {
-      onResizeCallbacks.add(callback)
-      return () => onResizeCallbacks.delete(callback)
-    },
-    ctx,
-    setStack(...programs: (Program | Program[] | DequeMap<any, Program>)[]) {
-      stack = programs
-    },
-    isPending: false,
-    scheduledRender: false,
-    requestRender: () => {
-      if (gl.isPending) {
-        gl.scheduledRender = true
-        return
-      }
-      gl.isPending = true
-      if (looping) return
-      requestIdleCallback(render)
-    },
-    createProgram: (
-      options: {
-        vertex: ReturnType<typeof glsl>
-        fragment: ReturnType<typeof glsl>
-      } & (
-        | { count: number | Atom<number>; indices?: never }
-        | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
-      )
-    ) => new Program({ gl, ...options }),
-    onLoop: (callback: (now: number) => void) => {
-      onLoops.push(callback)
-
-      if (onLoops.length === 1) {
-        looping = true
-        requestAnimationFrame(loop)
-      }
-      return () => {
-        onLoops.splice(onLoops.indexOf(callback), -1)
-      }
-    },
-  }
-
-  return gl
-}
-
-export type GL = ReturnType<typeof createGL>
-
-type Config = {
-  gl: GL
-  virtualProgram: VirtualProgram
-  program: Program
 }
 
 type ProgramOptions = {
@@ -135,36 +125,40 @@ type ProgramOptions = {
   | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
 )
 
-class Program {
-  visible: boolean
+export class Program {
+  fragment: ShaderToken
+  gl: GL
   glProgram: WebGLProgram
+  locations: { vertex: GLLocation[]; fragment: GLLocation[] }
+  vertex: ShaderToken
+  virtualProgram: VirtualProgram
+  visible: boolean
 
   private _glRecord: { value: { program: WebGLProgram | undefined }; dirty: boolean }
   private _indicesBuffer: BufferToken<Uint16Array> | undefined
   private _onBeforeDrawHandlers: (() => void)[]
   private _options: ProgramOptions
-  locations: { vertex: GLLocation[]; fragment: GLLocation[] }
-  virtualProgram: VirtualProgram
 
   constructor(options: ProgramOptions) {
+    this.gl = options.gl
+    this.vertex = options.vertex
+    this.fragment = options.fragment
+
     this._options = options
     this._glRecord = glRegistry.register(options.gl.ctx)
 
-    const { glProgram, locations } = ProgramRegistry.getInstance(options.gl).register(options.vertex, options.fragment)
-      .value as ProgramRecord
+    const { glProgram, locations } = ProgramRegistry.getInstance(options.gl).register(this).value as ProgramRecord
 
     this.glProgram = glProgram
     this.locations = locations
-
     this.virtualProgram = getVirtualProgram(glProgram)
-
-    this.glProgram = glProgram
     this.visible = true
+
     this._onBeforeDrawHandlers = []
 
     options.gl.ctx.useProgram(glProgram)
-    options.vertex.bind(options.gl, locations.vertex, this, this.virtualProgram)
-    options.fragment.bind(options.gl, locations.fragment, this, this.virtualProgram)
+    options.vertex.bind(this, locations.vertex)
+    options.fragment.bind(this, locations.fragment)
 
     if (options.indices) {
       this._indicesBuffer = (
@@ -174,10 +168,10 @@ class Program {
               target: 'ELEMENT_ARRAY_BUFFER',
               usage: 'STATIC_DRAW',
             })
-      ).__.bind(options.gl, this, this.virtualProgram)
+      ).__.bind(this)
     } else {
       if (typeof options.count === 'object') {
-        options.count.__.bind(options.gl, this, this.virtualProgram)
+        options.count.__.bind(this)
       }
     }
   }
@@ -192,26 +186,21 @@ class Program {
   draw() {
     if (!this.visible) return
     if (this._glRecord.value.program !== this.glProgram) {
-      this._options.gl.ctx.useProgram(this.glProgram)
+      this.gl.ctx.useProgram(this.glProgram)
       this._glRecord.value.program = this.glProgram
     }
 
     this._onBeforeDrawHandlers.forEach((handler) => handler())
-    this._options.vertex.update(this._options.gl, this.virtualProgram, this.locations.vertex)
-    this._options.fragment.update(this._options.gl, this.virtualProgram, this.locations.fragment)
+    this.vertex.update(this, this.locations.vertex)
+    this.fragment.update(this, this.locations.fragment)
 
     if (this._options.indices) {
-      this._indicesBuffer!.__.update(this._options.gl, this, this.virtualProgram)
+      this._indicesBuffer!.__.update(this)
 
-      this._options.gl.ctx.drawElements(
-        this._options.gl.ctx.TRIANGLES,
-        this._indicesBuffer!.get().length,
-        this._options.gl.ctx.UNSIGNED_SHORT,
-        0
-      )
+      this.gl.ctx.drawElements(this.gl.ctx.TRIANGLES, this._indicesBuffer!.get().length, this.gl.ctx.UNSIGNED_SHORT, 0)
     } else {
-      this._options.gl.ctx.drawArrays(
-        this._options.gl.ctx.TRIANGLES,
+      this.gl.ctx.drawArrays(
+        this.gl.ctx.TRIANGLES,
         0,
         typeof this._options.count === 'number' ? this._options.count : this._options.count.get()
       )

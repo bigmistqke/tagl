@@ -4,7 +4,53 @@ import { GL, Program, ShaderToken, attribute, glsl, isShader, uniform } from '..
 
 import { Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, isToken } from '../core/tokens'
 import { Mat4, Vec3 } from '../core/types'
-import { traverseParent } from './utils'
+
+const traverseChildren = (
+  node: Node3D | Origin3D,
+  callback: (object3D: Node3D, stop: () => void, preventBranch: () => void) => void
+) => {
+  const children = Array.from(node.children)
+
+  let shouldStop = false
+  const stop = () => {
+    shouldStop = true
+  }
+
+  let shouldPreventBranch = false
+  const preventBranch = () => {
+    shouldPreventBranch = true
+  }
+
+  for (let i = 0; i < children.length && !shouldStop; i++) {
+    const child = children[i]!
+    shouldPreventBranch = false
+    callback(child, stop, preventBranch)
+    if (!shouldPreventBranch) {
+      Array.prototype.push.apply(children, child.children)
+    }
+  }
+}
+
+export const traverseParent = (
+  root: Node3D | Origin3D,
+  callback?: (object3D: Node3D | Origin3D, stop: () => void) => false | void
+) => {
+  let currentNode: Node3D | Origin3D | undefined = root
+
+  let shouldStop = false
+  const stop = () => {
+    shouldStop = true
+  }
+
+  while (!shouldStop && currentNode && !(currentNode instanceof Origin3D)) {
+    if (callback?.(currentNode, stop) === false) {
+      return
+    }
+    currentNode = 'parent' in currentNode ? currentNode.parent : undefined
+  }
+
+  return currentNode
+}
 
 /**********************************************************************************/
 /*                                                                                */
@@ -14,25 +60,28 @@ import { traverseParent } from './utils'
 
 export class Node3D {
   localMatrix: Token<Mat4>
-  dirty = true
+  /**
+   * `0` clean node `1` dirty offspring `2` dirty node
+   */
+  flag: 0 | 1 | 2 = 2
   worldMatrix: Token<mat4>
   children: Node3D[] = []
   parent: Node3D | Origin3D | undefined = undefined
 
-  origin: Origin3D | undefined
-
   private _onMountHandlers: (() => void)[] = []
   private _onCleanupHandlers: (() => void)[] = []
   private _onUpdateHandlers: (() => void)[] = []
+  private _program: Program | undefined
 
   constructor(public object: Shape) {
     this.worldMatrix = uniform.mat4(mat4.clone(object.matrix.get()))
     this.worldMatrix.onBind((program) => {
-      this.localMatrix.subscribe(() => program.gl.requestRender())
+      this._program = program
+      // this.localMatrix.subscribe(() => program.gl.requestRender())
     })
 
     this.localMatrix = object.matrix
-    this.localMatrix.subscribe(this._updateDirty.bind(this))
+    this.localMatrix.subscribe(this._dirty.bind(this))
   }
 
   onMount(callback: () => void) {
@@ -58,73 +107,64 @@ export class Node3D {
     parent.children.push(this)
     this.parent = parent
 
-    const scene = traverseParent(this)
+    traverseChildren(this, (node) => node.mount())
+    this.mount()
 
-    this._traverseChildren((node) => node.mount(scene))
-
-    if (this.dirty) {
-      const scene = getScene(this.object)
-      if (scene) {
-        scene.node.nodesToUpdate.push(this)
-        this._traverseChildren((node) => {
-          if (node.dirty) return false
-          node.dirty = true
-          scene.node.nodesToUpdate.push(node)
-        })
-      }
-    }
     return this
   }
   unbind() {
-    this._traverseChildren((node) => node.cleanup())
+    traverseChildren(this, (node) => node.cleanup())
     this.cleanup()
+
     if (this.parent) {
-      this.parent.children.findIndex((child) => child === this)
+      const index = this.parent.children.findIndex((child) => child === this)
+      if (index !== -1) this.parent.children.splice(index, 1)
     }
 
     this.parent = undefined
   }
 
-  mount(origin: Origin3D | undefined) {
-    this.origin = origin
-    this._onMountHandlers.forEach((callback) => callback())
+  mount() {
+    for (let i = 0; i < this._onMountHandlers.length; i++) {
+      this._onMountHandlers[i]!()
+    }
   }
 
   cleanup() {
-    this.origin = undefined
-    this._onCleanupHandlers.forEach((callback) => callback())
+    for (let i = 0; i < this._onCleanupHandlers.length; i++) {
+      this._onCleanupHandlers[i]!()
+    }
   }
 
   update() {
     this.worldMatrix.set((matrix) => mat4.multiply(matrix, this.parent!.worldMatrix.get(), this.localMatrix.get()))
-    this._onUpdateHandlers.forEach((callback) => callback())
-    this.dirty = false
-  }
-
-  private _updateDirty() {
-    if (this.dirty) return
-
-    this.dirty = true
-
-    const origin = this.origin
-
-    if (origin instanceof Origin3D) {
-      origin.nodesToUpdate.push(this)
-      this._traverseChildren((node) => {
-        if (node.dirty) return false
-        node.dirty = true
-        origin.nodesToUpdate.push(node)
-      })
-    } else {
-      this._traverseChildren((node) => {
-        if (node.dirty) return false
-        node.dirty = true
-      })
+    for (let i = 0; i < this._onUpdateHandlers.length; i++) {
+      this._onUpdateHandlers[i]!()
     }
+    this.flag = 0
   }
-  private _traverseChildren(callback: (object3D: Node3D) => false | void) {
-    if (!callback(this)) return false
-    if (this.children.find((child) => child._traverseChildren(callback) === false)) return false
+
+  private _dirty() {
+    if (this.flag) return
+
+    this._program?.gl.requestRender()
+
+    traverseChildren(this, (node, stop) => {
+      if (node.flag === 0) node.flag = 2
+      else stop()
+    })
+
+    traverseParent(this, (node, stop) => {
+      if (node instanceof Node3D) {
+        if (node.flag === 0) {
+          node.flag = 1
+        } else {
+          stop()
+        }
+      }
+    })
+
+    this.flag = 2
   }
 }
 
@@ -136,14 +176,13 @@ export class Node3D {
 
 export class Origin3D {
   children: Node3D[] = []
-  nodesToUpdate: Node3D[] = []
   worldMatrix = atom(mat4.create())
   constructor(public scene: Scene) {}
   update(): void {
-    this.nodesToUpdate.forEach((node) => {
-      node.update()
+    traverseChildren(this, (child, _, preventBranch) => {
+      if (child.flag === 0) preventBranch()
+      else if (child.flag === 2) child.update()
     })
-    this.nodesToUpdate.length = 0
   }
 }
 

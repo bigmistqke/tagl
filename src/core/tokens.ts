@@ -124,11 +124,15 @@ export const atom = <T>(value: T) => {
   const subscriptions: ((value: T) => void)[] = []
   const requestRenders: (() => void)[] = []
   const requestRender = () => {
-    for (const requestRender of requestRenders) {
-      requestRender()
+    for (let i = 0; i < requestRenders.length; i++) {
+      requestRenders[i]!(value)
     }
   }
-  const notify = () => subscriptions.forEach((callback) => callback(value))
+  const notify = () => {
+    for (let i = 0; i < subscriptions.length; i++) {
+      subscriptions[i]!(value)
+    }
+  }
   const onBeforeDrawHandlers: (() => void)[] = []
   const onBindHandlers: ((program: Program) => void)[] = []
   const programs: Program[] = []
@@ -152,7 +156,9 @@ export const atom = <T>(value: T) => {
     },
     onBeforeDraw: (callback: () => void) => {
       onBeforeDrawHandlers.push(callback)
-      programs.forEach((program) => program.onBeforeDraw(callback))
+      for (let i = 0; i < programs.length; i++) {
+        programs[i]!.onBeforeDraw(callback)
+      }
       return () => {
         console.error('TODO')
       }
@@ -170,16 +176,19 @@ export const atom = <T>(value: T) => {
     },
     __: {
       bind: (program, callback) => {
-        /* if (cache.has(program.gl)) return
-        cache.add(program.gl) */
+        if (cache.has(program.gl)) return
+        cache.add(program.gl)
 
-        onBindHandlers.forEach((handler) => handler(program))
+        for (let i = 0; i < onBindHandlers.length; i++) {
+          onBindHandlers[i]!(program)
+        }
 
         programs.push(program)
-        onBeforeDrawHandlers.forEach((handler) => program.onBeforeDraw(handler))
+        for (let i = 0; i < onBeforeDrawHandlers.length; i++) {
+          program.onBeforeDraw(onBeforeDrawHandlers[i]!)
+        }
 
         requestRenders.push(() => {
-          // if (program.gl.isPending) return
           if (callback?.() === false) return
           program.gl.requestRender()
         })

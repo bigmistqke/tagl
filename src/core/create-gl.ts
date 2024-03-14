@@ -106,7 +106,9 @@ export class GL {
       if (element instanceof DequeMap) {
         element.forEach((program) => program.value.draw())
       } else if (Array.isArray(element)) {
-        element.forEach((program) => program.draw())
+        for (let i = 0; i < element.length; i++) {
+          element[i]!.draw()
+        }
       } else {
         element!.draw()
       }

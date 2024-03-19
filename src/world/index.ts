@@ -2,62 +2,16 @@ import { mat4, vec3 } from 'gl-matrix'
 
 import { GL, Program, ShaderToken, attribute, glsl, isShader, uniform } from '../core'
 
-import { Atom, BufferToken, Token, atom, buffer, effect, isAtom, isBufferToken, isToken } from '../core/tokens'
+import { Atom, atom, effect } from '../core/atom'
+import { BufferToken, Token, buffer } from '../core/tokens'
 import { Mat4, Vec3 } from '../core/types'
-
-const traverseChildren = (
-  node: Node3D | Origin3D,
-  callback: (object3D: Node3D, stop: () => void, preventBranch: () => void) => void
-) => {
-  const children = Array.from(node.children)
-
-  let shouldStop = false
-  const stop = () => {
-    shouldStop = true
-  }
-
-  let shouldPreventBranch = false
-  const preventBranch = () => {
-    shouldPreventBranch = true
-  }
-
-  for (let i = 0; i < children.length && !shouldStop; i++) {
-    const child = children[i]!
-    shouldPreventBranch = false
-    callback(child, stop, preventBranch)
-    if (!shouldPreventBranch) {
-      Array.prototype.push.apply(children, child.children)
-    }
-  }
-}
-
-export const traverseParent = (
-  root: Node3D | Origin3D,
-  callback?: (object3D: Node3D | Origin3D, stop: () => void) => false | void
-) => {
-  let currentNode: Node3D | Origin3D | undefined = root
-
-  let shouldStop = false
-  const stop = () => {
-    shouldStop = true
-  }
-
-  while (!shouldStop && currentNode && !(currentNode instanceof Origin3D)) {
-    if (callback?.(currentNode, stop) === false) {
-      return
-    }
-    currentNode = 'parent' in currentNode ? currentNode.parent : undefined
-  }
-
-  return currentNode
-}
+import { isAtom, isBufferToken, isToken } from '../core/utils'
+import { traverseChildren } from './utils/traverse-children'
+import { traverseParent } from './utils/traverse-parent'
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                    NODE3D                                      */
-/*                                                                                */
 /**********************************************************************************/
-
 export class Node3D {
   localMatrix: Token<Mat4>
   /**
@@ -67,9 +21,10 @@ export class Node3D {
   worldMatrix: Token<mat4>
   children: Node3D[] = []
   parent: Node3D | Origin3D | undefined = undefined
+  origin: Origin3D | undefined
 
-  private _onMountHandlers: (() => void)[] = []
-  private _onCleanupHandlers: (() => void)[] = []
+  private _onMountHandlers: ((origin: Origin3D | undefined) => void)[] = []
+  private _onCleanupHandlers: ((origin: Origin3D | undefined) => void)[] = []
   private _onUpdateHandlers: (() => void)[] = []
   private _program: Program | undefined
 
@@ -84,13 +39,13 @@ export class Node3D {
     this.localMatrix.subscribe(this._dirty.bind(this))
   }
 
-  onMount(callback: () => void) {
+  onMount(callback: (origin: Origin3D | undefined) => void) {
     this._onMountHandlers.push(callback)
     return () => {
       console.error('TODO')
     }
   }
-  onCleanup(callback: () => void) {
+  onCleanup(callback: (origin: Origin3D | undefined) => void) {
     this._onCleanupHandlers.push(callback)
     return () => {
       console.error('TODO')
@@ -107,13 +62,24 @@ export class Node3D {
     parent.children.push(this)
     this.parent = parent
 
-    traverseChildren(this, (node) => node.mount())
+    this.origin = 'origin' in parent ? parent.origin : parent
+
+    if (this.origin instanceof Origin3D) {
+      traverseChildren(this, (node) => {
+        node.origin = this.origin
+        node.mount()
+      })
+    }
+
     this.mount()
 
     return this
   }
   unbind() {
-    traverseChildren(this, (node) => node.cleanup())
+    traverseChildren(this, (node) => {
+      node.origin = undefined
+      node.cleanup()
+    })
     this.cleanup()
 
     if (this.parent) {
@@ -126,13 +92,13 @@ export class Node3D {
 
   mount() {
     for (let i = 0; i < this._onMountHandlers.length; i++) {
-      this._onMountHandlers[i]!()
+      this._onMountHandlers[i]!(this.origin)
     }
   }
 
   cleanup() {
     for (let i = 0; i < this._onCleanupHandlers.length; i++) {
-      this._onCleanupHandlers[i]!()
+      this._onCleanupHandlers[i]!(this.origin)
     }
   }
 
@@ -169,9 +135,7 @@ export class Node3D {
 }
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                    ORIGIN3D                                    */
-/*                                                                                */
 /**********************************************************************************/
 
 export class Origin3D {
@@ -187,9 +151,7 @@ export class Origin3D {
 }
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                       SCENE                                    */
-/*                                                                                */
 /**********************************************************************************/
 
 const getScene = (object: Scene | Shape) => {
@@ -228,9 +190,7 @@ export class Scene extends GL {
 }
 
 /**********************************************************************************/
-/*                                                                                */
-/*                                      SHAPE                                      */
-/*                                                                                */
+/*                                      SHAPE                                     */
 /**********************************************************************************/
 
 type ShapeOptionsShader =
@@ -311,10 +271,10 @@ export class Shape {
     return this.node.unbind
   }
 
-  private _mount() {
-    const scene = getScene(this)
+  private _mount(origin: Origin3D | undefined) {
+    if (!origin) return
 
-    if (!scene) return
+    const scene = origin.scene
 
     const cached = this._program
     if (cached) {
@@ -374,10 +334,10 @@ export class Shape {
     })
   }
 
-  private _cleanup() {
-    const scene = getScene(this)
+  private _cleanup(origin: Origin3D | undefined) {
+    if (!origin) return
 
-    if (!scene || !this._program) return
+    const scene = origin.scene
 
     scene.stack.set((stack, flags) => {
       const index = stack.findIndex((program) => program === this._program)
@@ -393,9 +353,7 @@ export class Shape {
 }
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                       PLANE                                    */
-/*                                                                                */
 /**********************************************************************************/
 
 const _plane = {
@@ -410,9 +368,7 @@ export const createPlane = (options: Omit<ShapeOptions, 'vertices' | 'indices' |
   })
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                        CUBE                                    */
-/*                                                                                */
 /**********************************************************************************/
 
 // prettier-ignore
@@ -485,9 +441,7 @@ export const createCube = (options: Omit<ShapeOptions, 'vertices' | 'indices' | 
   })
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                       DISC                                     */
-/*                                                                                */
 /**********************************************************************************/
 
 const cache = {

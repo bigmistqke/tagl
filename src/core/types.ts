@@ -4,11 +4,8 @@ import { BufferRegistry, TextureRegistry } from './virtualization/registries'
 import { type TextureSlots } from './virtualization/texture-slots'
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                    UTILITIES                                   */
-/*                                                                                */
 /**********************************************************************************/
-
 export type Accessor<T> = () => T
 export type ValueOf<T extends Record<string, any>> = T[keyof T]
 export type IsUnion<T, B = T> = T extends T ? ([B] extends [T] ? false : true) : never
@@ -22,8 +19,6 @@ export type ResolveTuple<T extends any> = {
 }
 export type Resolve<T> = T extends (...args: any[]) => any ? ReturnType<T> : T
 
-type Brand<K, T> = K & { __brand: T }
-
 export type Mat2 = mat2
 export type Mat3 = mat3
 export type Mat4 = mat4
@@ -32,9 +27,7 @@ export type Vec3 = vec3
 export type Vec4 = vec4
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                       TOKENS                                   */
-/*                                                                                */
 /**********************************************************************************/
 
 export type UniformTypes = AttributeTypes | 'sampler2d'
@@ -95,11 +88,8 @@ export type GLProgram = {
 export type GLLocation = WebGLUniformLocation | number
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                  WEBGL-FORMATS                                 */
-/*                                                                                */
 /**********************************************************************************/
-
 //prettier-ignore
 type FormatWebGL = 
   /* General-purpose formats */

@@ -1,40 +1,37 @@
 import { mat4 } from 'gl-matrix'
-import { Disc, createDisc, createScene } from 'world'
+import opentype from 'opentype.js'
+import { createScene } from 'world'
+import { createCharacter } from 'world/text'
 
 const canvas = document.createElement('canvas')
 document.body.appendChild(canvas)
 
 const scene = createScene(canvas)
 scene.autosize()
-scene.camera.set((camera) => mat4.translate(camera, camera, [0, 0, -5]))
-
-let previousDisc: Disc
-
-const arm = Array.from({ length: 4000 }).map((_, index) => {
-  const matrix = mat4.create()
-  mat4.translate(matrix, matrix, [1, 0, 0])
-  mat4.scale(matrix, matrix, [1, 1, 1])
-
-  const disc = createDisc({
-    color: [0, 1, 0],
-    matrix,
-    radius: 5,
-    segments: 4,
-  })
-
-  if (previousDisc) {
-    disc.bind(previousDisc)
-  } else {
-    disc.bind(scene)
-    mat4.scale(matrix, matrix, [0.125, 0.125, 0.125])
-  }
-  previousDisc = disc
-  return disc
+scene.camera.set((camera) => {
+  mat4.translate(camera, camera, [0, 0, -5])
+  mat4.rotate(camera, camera, Math.PI, [0, 1, 0])
+  return camera
 })
 
-const axis = [0, 0, 1] as const
-scene.onLoop(() => {
-  for (let index = 0; index < arm.length; index++) {
-    arm[index]!.matrix.set((matrix) => mat4.rotate(matrix, matrix, 0.01 / (index + 1), axis))
-  }
+const font = opentype.load('./GeistMono-Regular.otf')
+
+const matrix = mat4.create()
+mat4.rotate(matrix, matrix, Math.PI, [0, 0, 1])
+mat4.translate(matrix, matrix, [-2, 2, 0])
+
+font.then((font) => {
+  const char = createCharacter({
+    font,
+    character: 'a',
+    matrix,
+    color: [0, 1, 0],
+  })
+
+  char.bind(scene)
+
+  setTimeout(() => {
+    char.character.set('b')
+    char.matrix.set((matrix) => mat4.translate(matrix, matrix, [5, 0, 0]))
+  }, 1000)
 })

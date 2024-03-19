@@ -1,4 +1,5 @@
 import { mat4, vec3 } from 'gl-matrix'
+import { Accessor } from 'src/core/types'
 import { Vector2 } from './types'
 
 export class QuadraticBezier {
@@ -80,9 +81,7 @@ export class QuadraticBezier {
 }
 
 /**********************************************************************************/
-/*                                                                                */
 /*                               ADAPTIVE 2D BEZIERS                              */
-/*                                                                                */
 /**********************************************************************************/
 
 const midpoint = (p1: Vector2, p2: Vector2): Vector2 => [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2]

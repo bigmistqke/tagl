@@ -18,8 +18,7 @@ export class BufferRegistry extends RegistryBase<BufferSource, WebGLBuffer> {
       const buffer = this.gl.createBuffer()
       this.gl.bindBuffer(this.gl[options.target], buffer)
       this.gl.bufferData(this.gl[options.target], value, this.gl[options.usage])
-      this.gl.finish()
-      if (!buffer) throw 'Unable to create texture'
+      if (!buffer) throw 'Unable to create buffer'
       return buffer
     })
   }

@@ -1,4 +1,5 @@
-import { GL, Program } from '.'
+import { $TYPE, Program } from '.'
+import { Atom, atom } from './atom'
 import {
   Accessor,
   DataType,
@@ -13,22 +14,11 @@ import {
   Vec3,
   Vec4,
 } from './types'
-import { dataTypeToSize, uniformDataTypeToFunctionName } from './utils'
+import { dataTypeToSize, isAtom, uniformDataTypeToFunctionName } from './utils'
 
 /**********************************************************************************/
-/*                                                                                */
-/*                                    CONSTANTS                                   */
-/*                                                                                */
-/**********************************************************************************/
-
-export const $TYPE = Symbol('atom')
-
-/**********************************************************************************/
-/*                                                                                */
 /*                                       TYPES                                    */
-/*                                                                                */
 /**********************************************************************************/
-
 /* VARIABLE: UNIFORM + ATTRIBUTE */
 type Variable<TValueDefault, TTOptionsDefault = unknown, TProperties = {}> = <
   const TValue extends TValueDefault,
@@ -92,135 +82,10 @@ export type Token<T = Float32Array, TLocation = WebGLUniformLocation | number> =
 }
 
 /**********************************************************************************/
-/*                                                                                */
-/*                                       ATOM                                     */
-/*                                                                                */
-/**********************************************************************************/
-
-export type Atom<T = any> = {
-  [$TYPE]: 'atom'
-  set: Setter<T>
-  get: Accessor<T>
-  onBeforeDraw: (handler: () => void) => () => void
-  onBind: (handler: (program: Program) => void) => () => void
-  subscribe: (callback: (value: T) => void) => () => void
-  __: {
-    bind: (program: Program, callback?: () => false | void) => void
-    requestRender: () => void
-    notify: () => void
-  }
-}
-
-export const atom = <T>(value: T) => {
-  const cache = new Set<GL>()
-
-  let shouldNotify = true
-  let shouldRender = true
-  const config = {
-    preventNotification: () => (shouldNotify = false),
-    preventRender: () => (shouldRender = false),
-  }
-
-  const subscriptions: ((value: T) => void)[] = []
-  const requestRenders: (() => void)[] = []
-  const requestRender = () => {
-    for (let i = 0; i < requestRenders.length; i++) {
-      requestRenders[i]!(value)
-    }
-  }
-  const notify = () => {
-    for (let i = 0; i < subscriptions.length; i++) {
-      subscriptions[i]!(value)
-    }
-  }
-  const onBeforeDrawHandlers: (() => void)[] = []
-  const onBindHandlers: ((program: Program) => void)[] = []
-  const programs: Program[] = []
-
-  const atom: Atom<T> = {
-    [$TYPE]: 'atom',
-    get: () => value,
-    set: (_value) => {
-      if (typeof _value === 'function') {
-        // @ts-expect-error
-        value = _value(value, config)
-      } else {
-        value = _value
-      }
-
-      if (shouldNotify) notify()
-      if (shouldRender) requestRender()
-
-      shouldNotify = true
-      shouldRender = true
-    },
-    onBeforeDraw: (callback: () => void) => {
-      onBeforeDrawHandlers.push(callback)
-      for (let i = 0; i < programs.length; i++) {
-        programs[i]!.onBeforeDraw(callback)
-      }
-      return () => {
-        console.error('TODO')
-      }
-    },
-    onBind: (handler: (program: Program) => void) => {
-      onBindHandlers.push(handler)
-      return () => {}
-    },
-    subscribe: (callback: (value: T) => void) => {
-      subscriptions.push(callback)
-      return () => {
-        console.error('TODO')
-        /* subscriptions.delete(callback) */
-      }
-    },
-    __: {
-      bind: (program, callback) => {
-        if (cache.has(program.gl)) return
-        cache.add(program.gl)
-
-        for (let i = 0; i < onBindHandlers.length; i++) {
-          onBindHandlers[i]!(program)
-        }
-
-        programs.push(program)
-        for (let i = 0; i < onBeforeDrawHandlers.length; i++) {
-          program.onBeforeDraw(onBeforeDrawHandlers[i]!)
-        }
-
-        requestRenders.push(() => {
-          if (callback?.() === false) return
-          program.gl.requestRender()
-        })
-      },
-      requestRender,
-      notify,
-    },
-  }
-
-  return atom
-}
-
-/**********************************************************************************/
-/*                                                                                */
-/*                                   SUBSCRIBE                                    */
-/*                                                                                */
-/**********************************************************************************/
-
-export const effect = (callback: () => void, dependencies: (Atom | Token | BufferToken)[]) => {
-  const cleanups = dependencies.map((dependency) => dependency.subscribe(callback))
-  callback()
-  return () => cleanups.forEach((cleanup) => cleanup())
-}
-
-/**********************************************************************************/
-/*                                                                                */
 /*                                    UNIFORM                                     */
-/*                                                                                */
 /**********************************************************************************/
-
 /**
- * template-helper to inject uniform into `glsl`
+ * Utility to inject uniform into `glsl`-templates.
  * @example
  *
  * ```ts
@@ -287,11 +152,8 @@ export const uniform = new Proxy({} as UniformProxy, {
 })
 
 /**********************************************************************************/
-/*                                                                                */
 /*                                    ATTRIBUTE                                   */
-/*                                                                                */
 /**********************************************************************************/
-
 export type AttributeOptions = BufferOptions & {
   stride: number
   offset: number
@@ -383,13 +245,10 @@ export const attribute = new Proxy({} as AttributeProxy, {
       return token
     }
   },
-})
-/**********************************************************************************/
-/*                                                                                */
+}) /**********************************************************************************/
 /*                                      BUFFER                                    */
-/*                                                                                */
-/**********************************************************************************/
 
+/**********************************************************************************/
 export type BufferUsage =
   | 'STATIC_DRAW'
   | 'DYNAMIC_DRAW'
@@ -426,6 +285,8 @@ export type BufferToken<T = Float32Array> = {
   }
 }
 
+const cache = new WeakMap<Program, Map<string, WebGLBuffer>>()
+
 export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: BufferOptions): BufferToken<T> => {
   const options: BufferOptions = {
     target: 'ARRAY_BUFFER',
@@ -448,42 +309,26 @@ export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: Bu
       update: (program) => {
         const buffer = program.virtualProgram.registerBuffer(get(), options)
 
-        // NOTE: maybe we can prevent having to do unnecessary binds here?
-        program.gl.ctx.bindBuffer(program.gl.ctx[options.target], buffer.value)
+        if (!cache.has(program)) {
+          cache.set(program, new Map())
+        }
+        const cached = cache.get(program)!
+
+        if (cached.get(options.target) !== buffer.value) {
+          // NOTE: maybe we can prevent having to do unnecessary binds here?
+          program.gl.ctx.bindBuffer(program.gl.ctx[options.target], buffer.value)
+          cached.set(options.target, buffer.value)
+        }
+
         if (buffer.dirty) {
           program.gl.ctx.bufferData(program.gl.ctx[options.target], get(), program.gl.ctx[options.usage])
           buffer.dirty = false
         }
 
-        return token
+        //return token
       },
     },
   }
 
   return token
 }
-
-/**********************************************************************************/
-/*                                                                                */
-/*                                       UTILS                                    */
-/*                                                                                */
-/**********************************************************************************/
-
-type InferAtomType<T, TKey extends keyof AtomTypes<any>> = T extends { get: infer TAccessor }
-  ? TAccessor extends Accessor<infer TValue>
-    ? AtomTypes<TValue>[TKey]
-    : AtomTypes[TKey]
-  : AtomTypes[TKey]
-
-type AtomTypes<T = any> = {
-  atom: Atom<T>
-  bufferToken: BufferToken<T>
-  token: Token<T>
-}
-
-export const isToken = <T>(value: T): value is InferAtomType<T, 'token'> =>
-  typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'token'
-export const isBufferToken = <T>(value: T): value is InferAtomType<T, 'bufferToken'> =>
-  typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'buffer'
-export const isAtom = <T>(value: T): value is InferAtomType<T, 'atom'> =>
-  typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'atom'

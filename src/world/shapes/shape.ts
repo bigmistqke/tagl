@@ -58,6 +58,7 @@ export class Shape<TData extends Record<string, any> = {}> {
     this.vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
     this.uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
     this.matrix = isToken(options.matrix) ? options.matrix : uniform.mat4(options.matrix)
+
     this.mode = isAtom(options.mode) ? options.mode : atom(options.mode || 'TRIANGLES')
 
     this.count = isAtom(options.count) ? options.count : atom(options.count)

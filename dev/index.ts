@@ -1,12 +1,12 @@
+import { Scene } from '@tagl/world'
+import { Character } from '@tagl/world/text'
 import { mat4 } from 'gl-matrix'
 import opentype from 'opentype.js'
-import { createScene } from 'world'
-import { createCharacter } from 'world/text'
 
 const canvas = document.createElement('canvas')
 document.body.appendChild(canvas)
 
-const scene = createScene(canvas)
+const scene = new Scene(canvas)
 scene.autosize()
 scene.camera.set((camera) => {
   mat4.translate(camera, camera, [0, 0, -5])
@@ -21,17 +21,17 @@ mat4.rotate(matrix, matrix, Math.PI, [0, 0, 1])
 mat4.translate(matrix, matrix, [-2, 2, 0])
 
 font.then((font) => {
-  const char = createCharacter({
+  const character = new Character({
     font,
-    character: 'a',
+    value: 'a',
     matrix,
     color: [0, 1, 0],
   })
 
-  char.bind(scene)
+  character.bind(scene)
 
   setTimeout(() => {
-    char.character.set('b')
-    char.matrix.set((matrix) => mat4.translate(matrix, matrix, [5, 0, 0]))
+    character.matrix.set((matrix) => mat4.translate(matrix, matrix, [5, 0, 0]))
+    character.value.set('b')
   }, 1000)
 })

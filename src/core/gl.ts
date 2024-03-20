@@ -2,20 +2,10 @@ import { atom, type Atom } from './atom'
 import { DequeMap } from './data-structures/deque-map'
 import { glsl, type ShaderToken } from './glsl'
 import { buffer, type BufferToken } from './tokens'
-import { GLLocation } from './types'
+import { GLLocation, RenderMode } from './types'
 import { isAtom, isBufferToken } from './utils'
 import { glRegistry, ProgramRegistry, type ProgramRecord } from './virtualization/registries'
 import { getVirtualProgram, VirtualProgram } from './virtualization/virtual-program'
-
-/**
- * Creates a new GL instance with a WebGL2 rendering context.
- * @param {HTMLCanvasElement} canvas - The HTML canvas element to attach the WebGL2 context.
- * @returns {GL} An instance of the GL class, initialized with the given canvas.
- */
-
-export const createGL = (canvas: HTMLCanvasElement) => {
-  return new GL(canvas)
-}
 
 /**
  * Represents a WebGL2 rendering and management system.
@@ -24,11 +14,13 @@ export class GL {
   ctx: WebGL2RenderingContext
   isPending = false
   stack = atom<(Program | Program[] | DequeMap<any, Program>)[]>([])
+  looping = false
+
+  private batching = false
   private _scheduledRender = false
   private _onResizeCallbacks: ((canvas: HTMLCanvasElement) => void)[] = []
-  private _onBeforeRenderCallbacks: (() => void)[] = []
+  private _onBeforeRenderCallbacks: ((now: number) => void)[] = []
   private _onLoopCallbacks: ((now: number) => void)[] = []
-  looping = false
 
   /**
    * @param {HTMLCanvasElement} canvas - The HTML canvas element to use for WebGL2 rendering.
@@ -45,7 +37,7 @@ export class GL {
    * @param {Function} callback - The callback function to register.
    * @returns {Function} A function that, when called, will unregister the provided callback.
    */
-  onBeforeRender(callback: () => {}) {
+  onBeforeRender(callback: (now: number) => void): Function {
     this._onBeforeRenderCallbacks.push(callback)
     return () => {
       this._onBeforeRenderCallbacks.splice(this._onBeforeRenderCallbacks.indexOf(callback), -1)
@@ -57,7 +49,7 @@ export class GL {
    * @param {Function} callback - The callback function to register, receiving the current timestamp.
    * @returns {Function} A function that, when called, will unregister the provided callback.
    */
-  onLoop(callback: (now: number) => void) {
+  onLoop(callback: (now: number) => void): Function {
     this._onLoopCallbacks.push(callback)
 
     if (this._onLoopCallbacks.length === 1) {
@@ -74,7 +66,7 @@ export class GL {
    * @param {Function} callback - The callback function to register, receiving the canvas element.
    * @returns {Function} A function that, when called, will unregister the provided callback.
    */
-  onResize(callback: (canvas: HTMLCanvasElement) => void) {
+  onResize(callback: (canvas: HTMLCanvasElement) => void): Function {
     this._onResizeCallbacks.push(callback)
     return () => {
       this._onResizeCallbacks.splice(this._onResizeCallbacks.indexOf(callback), -1)
@@ -111,8 +103,20 @@ export class GL {
       return
     }
     this.isPending = true
-    if (this.looping) return
-    requestIdleCallback(this.render.bind(this))
+    if (this.looping || this.batching) return
+    requestIdleCallback(this._render.bind(this))
+  }
+
+  batch(callback: () => void) {
+    try {
+      this.batching = true
+      callback()
+    } finally {
+      this.batching = false
+      if (this.isPending) {
+        requestAnimationFrame(this._render.bind(this))
+      }
+    }
   }
 
   /**
@@ -124,11 +128,12 @@ export class GL {
     options: {
       vertex: ReturnType<typeof glsl>
       fragment: ReturnType<typeof glsl>
+      mode: Atom<RenderMode> | RenderMode
     } & (
       | { count: number | Atom<number>; indices?: never }
       | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
     )
-  ) {
+  ): Program {
     return new Program({ gl: this, ...options })
   }
 
@@ -149,7 +154,7 @@ export class GL {
         node(now)
       }
     }
-    if (this.isPending) this.render()
+    if (this.isPending) this._render(now)
   }
 
   /**
@@ -157,12 +162,12 @@ export class GL {
    * @private
    * @async
    */
-  private async render() {
+  private async _render(now: number) {
     this.isPending = false
     this._scheduledRender = false
 
     for (let i = 0; i < this._onBeforeRenderCallbacks.length; i++) {
-      this._onBeforeRenderCallbacks[i]!()
+      this._onBeforeRenderCallbacks[i]!(now)
     }
 
     const stack = this.stack.get()
@@ -180,7 +185,7 @@ export class GL {
       }
     }
 
-    if (this._scheduledRender) this.render()
+    // if (this._scheduledRender) this._render()
   }
 }
 
@@ -188,6 +193,7 @@ type ProgramOptions = {
   gl: GL
   vertex: ReturnType<typeof glsl>
   fragment: ReturnType<typeof glsl>
+  mode: Atom<RenderMode> | RenderMode
 } & (
   | { count: number | Atom<number>; indices?: never }
   | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
@@ -205,6 +211,7 @@ export class Program {
   vertex: ShaderToken
   virtualProgram: VirtualProgram
   visible: boolean
+  mode: Atom<RenderMode>
 
   private _glRecord: { value: { program: WebGLProgram | undefined }; dirty: boolean }
   private _indicesBuffer: BufferToken<Uint16Array> | undefined
@@ -219,6 +226,7 @@ export class Program {
     this.gl = options.gl
     this.vertex = options.vertex
     this.fragment = options.fragment
+    this.mode = isAtom(options.mode) ? options.mode : atom(options.mode || 'TRIANGLES')
 
     this._options = options
     this._glRecord = glRegistry.register(options.gl.ctx)
@@ -257,7 +265,7 @@ export class Program {
    * @param {() => void} callback - The callback function to execute before drawing.
    * @returns {Function} A function that, when called, will unregister the provided callback.
    */
-  onBeforeDraw(callback: () => void) {
+  onBeforeDraw(callback: () => void): Function {
     this._onBeforeDrawHandlers.push(callback)
     return () => {
       console.error('TODO')
@@ -286,10 +294,15 @@ export class Program {
 
     if (this._options.indices) {
       this._indicesBuffer!.__.update(this)
-      this.gl.ctx.drawElements(this.gl.ctx.TRIANGLES, this._indicesBuffer!.get().length, this.gl.ctx.UNSIGNED_SHORT, 0)
+      this.gl.ctx.drawElements(
+        this.gl.ctx[this.mode.get()],
+        this._indicesBuffer!.get().length,
+        this.gl.ctx.UNSIGNED_SHORT,
+        0
+      )
     } else {
       this.gl.ctx.drawArrays(
-        this.gl.ctx.TRIANGLES,
+        this.gl.ctx[this.mode.get()],
         0,
         typeof this._options.count === 'number' ? this._options.count : this._options.count.get()
       )

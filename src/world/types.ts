@@ -1,4 +1,4 @@
-import { TupleOf } from 'src/core/types'
+import { TupleOf } from '@tagl/core/types'
 
 export type Vector2 = TupleOf<number, 2>
 export type Vector3 = TupleOf<number, 3>

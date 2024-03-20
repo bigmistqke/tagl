@@ -19,6 +19,7 @@ import { dataTypeToSize, isAtom, uniformDataTypeToFunctionName } from './utils'
 /**********************************************************************************/
 /*                                       TYPES                                    */
 /**********************************************************************************/
+
 /* VARIABLE: UNIFORM + ATTRIBUTE */
 type Variable<TValueDefault, TTOptionsDefault = unknown, TProperties = {}> = <
   const TValue extends TValueDefault,
@@ -84,6 +85,7 @@ export type Token<T = Float32Array, TLocation = WebGLUniformLocation | number> =
 /**********************************************************************************/
 /*                                    UNIFORM                                     */
 /**********************************************************************************/
+
 /**
  * Utility to inject uniform into `glsl`-templates.
  * @example
@@ -138,10 +140,10 @@ export const uniform = new Proxy({} as UniformProxy, {
 
             if (type.includes('mat')) {
               // @ts-expect-error
-              program.gl.ctx[functionName](location, false, get())
+              program.gl.ctx[functionName](location, false, uniform.value)
             } else {
               // @ts-expect-error
-              program.gl.ctx[functionName](location, get())
+              program.gl.ctx[functionName](location, uniform.value)
             }
           },
         },
@@ -154,6 +156,7 @@ export const uniform = new Proxy({} as UniformProxy, {
 /**********************************************************************************/
 /*                                    ATTRIBUTE                                   */
 /**********************************************************************************/
+
 export type AttributeOptions = BufferOptions & {
   stride: number
   offset: number
@@ -245,10 +248,12 @@ export const attribute = new Proxy({} as AttributeProxy, {
       return token
     }
   },
-}) /**********************************************************************************/
-/*                                      BUFFER                                    */
+})
 
 /**********************************************************************************/
+/*                                      BUFFER                                    */
+/**********************************************************************************/
+
 export type BufferUsage =
   | 'STATIC_DRAW'
   | 'DYNAMIC_DRAW'

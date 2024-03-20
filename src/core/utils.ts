@@ -1,3 +1,4 @@
+import { mat4, vec3 } from 'gl-matrix'
 import { $TYPE } from '.'
 import { Atom } from './atom'
 import { BufferToken, Token } from './tokens'
@@ -138,3 +139,11 @@ export const uniformDataTypeToFunctionName = (dataType: string) => {
       return `uniform${count}${type}v`
   }
 }
+
+export const getTranslationFromMatrix = (scratch: vec3, matrix: mat4) =>
+  vec3.set(
+    scratch,
+    matrix[12], // x translation
+    matrix[13], // y translation
+    matrix[14] // z translation
+  )

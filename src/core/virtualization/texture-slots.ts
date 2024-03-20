@@ -1,5 +1,5 @@
-import { DequeMap } from '../data-structures/deque-map'
-import { createInstantiator } from '../utils'
+import { DequeMap } from '@tagl/core/data-structures/deque-map'
+import { createInstantiator } from '@tagl/core/utils'
 
 export class TextureSlots {
   // deque managing texture-slots
@@ -9,10 +9,7 @@ export class TextureSlots {
   // hardware-dependent constant
   MAX_COMBINED_TEXTURE_IMAGE_UNITS = -1
 
-  enqueueTextureBinding(
-    texture: WebGLTexture,
-    callback: (index: number) => void
-  ) {
+  enqueueTextureBinding(texture: WebGLTexture, callback: (index: number) => void) {
     // if textureslot is already
     const slot = this.textureSlots.get(texture)
     if (slot) {
@@ -46,9 +43,7 @@ export class TextureSlots {
 
   static create(gl: WebGL2RenderingContext) {
     const instance = createInstantiator<WebGL2RenderingContext>()(this)(gl)
-    instance.MAX_COMBINED_TEXTURE_IMAGE_UNITS = gl.getParameter(
-      gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS
-    )
+    instance.MAX_COMBINED_TEXTURE_IMAGE_UNITS = gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS)
     return instance
   }
 }

@@ -1,11 +1,11 @@
 import zeptoid from 'zeptoid'
 
-import { GL, Program } from 'src/core'
-import { compile } from '../compilation'
-import { RegistryBase } from '../data-structures/registry'
-import { Token } from '../tokens'
-import { BufferOptions, GLLocation } from '../types'
-import { createInstantiator, createWebGLProgram } from '../utils'
+import { GL, Program } from '@tagl/core'
+import { compile } from '@tagl/core/compilation'
+import { RegistryBase } from '@tagl/core/data-structures/registry'
+import { Token } from '@tagl/core/tokens'
+import { BufferOptions, GLLocation } from '@tagl/core/types'
+import { createInstantiator, createWebGLProgram } from '@tagl/core/utils'
 import { createVirtualProgram } from './virtual-program'
 
 /** caches `WebGLBuffer` based on reference */

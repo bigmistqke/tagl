@@ -1,5 +1,6 @@
-import { BufferOptions } from 'src/core/types'
-import { Registry } from '../data-structures/registry'
+import { Registry } from '@tagl/core/data-structures/registry'
+import { BufferOptions } from '@tagl/core/types'
+
 import { BufferRegistry, TextureRegistry } from './registries'
 import { TextureSlots } from './texture-slots'
 

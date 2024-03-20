@@ -1,4 +1,4 @@
-import { Program } from './create-gl'
+import { Program } from './gl'
 import { Token } from './tokens'
 import { GLLocation } from './types'
 import { shaderCompilationRegistry } from './virtualization/registries'

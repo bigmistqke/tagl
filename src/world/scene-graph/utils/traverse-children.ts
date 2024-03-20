@@ -1,4 +1,4 @@
-import { Node3D, Origin3D } from '..'
+import { Node3D, Origin3D } from '../..'
 
 let shouldStop = false
 const stop = () => {

@@ -11,16 +11,17 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
-    "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true,
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "types": [],
     "baseUrl": ".",
     "paths": {
-      "src/*": ["src/*"],
-      "world": ["src/world/index.ts"],
-      "world/text": ["src/world/text/index.ts"]
+      "@tagl/core": ["src/core/index.ts"],
+      "@tagl/core/*": ["src/core/*"],
+      "@tagl/world": ["src/world/index.ts"],
+      "@tagl/world/*": ["src/world/*"],
+      "internal-utils": ["src/internal-utils.ts"]
     }
   },
   "exclude": ["node_modules", "dist", "./dev"]

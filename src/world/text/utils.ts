@@ -1,4 +1,4 @@
-import { adaptiveSubdivideCubicBezierPoints, adaptiveSubdivideQuadraticBezierPoints } from '../curves'
+import { adaptiveSubdivideCubicBezierPoints, adaptiveSubdivideQuadraticBezierPoints } from '../curves/quadratic-bezier'
 import { Vector2 } from '../types'
 
 export const isHole = (commands: opentype.PathCommand[], inverted: boolean) => {

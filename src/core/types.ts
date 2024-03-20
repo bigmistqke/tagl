@@ -6,6 +6,7 @@ import { type TextureSlots } from './virtualization/texture-slots'
 /**********************************************************************************/
 /*                                    UTILITIES                                   */
 /**********************************************************************************/
+
 export type Accessor<T> = () => T
 export type ValueOf<T extends Record<string, any>> = T[keyof T]
 export type IsUnion<T, B = T> = T extends T ? ([B] extends [T] ? false : true) : never
@@ -90,6 +91,7 @@ export type GLLocation = WebGLUniformLocation | number
 /**********************************************************************************/
 /*                                  WEBGL-FORMATS                                 */
 /**********************************************************************************/
+
 //prettier-ignore
 type FormatWebGL = 
   /* General-purpose formats */
@@ -180,3 +182,23 @@ export type DataType =
   | 'INT'
   | 'FLOAT'
   | 'HALF_FLOAT'
+
+export type TypedArray =
+  | Int8Array
+  | Uint8Array
+  | Uint8ClampedArray
+  | Int16Array
+  | Uint16Array
+  | Int32Array
+  | Uint32Array
+  | Float32Array
+  | Float64Array
+
+export type RenderMode =
+  | 'TRIANGLES'
+  | 'LINES'
+  | 'POINTS'
+  | 'TRIANGLE_FAN'
+  | 'TRIANGLE_STRIP'
+  | 'LINE_STRIP'
+  | 'LINE_LOOP'

@@ -1,6 +1,8 @@
 import { mat4, vec3 } from 'gl-matrix'
-import { Accessor } from 'src/core/types'
-import { Vector2 } from './types'
+
+import { Accessor } from '@tagl/core/types'
+
+import { Vector2 } from '@tagl/world/types'
 
 export class QuadraticBezier {
   _curvatureVector: Accessor<vec3>

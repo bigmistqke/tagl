@@ -1,5 +1,5 @@
 import { $TYPE } from '.'
-import { GL, Program } from './create-gl'
+import { GL, Program } from './gl'
 import type { BufferToken, Token } from './tokens'
 import type { Accessor, Setter } from './types'
 
@@ -95,10 +95,10 @@ export const atom = <T>(value: T) => {
   }
 
   const subscriptions: ((value: T) => void)[] = []
-  const requestRenders: (() => void)[] = []
+  const requestRenderCallbacks: (() => void)[] = []
   const requestRender = () => {
-    for (let i = 0; i < requestRenders.length; i++) {
-      requestRenders[i]!(/* value */)
+    for (let i = 0; i < requestRenderCallbacks.length; i++) {
+      requestRenderCallbacks[i]!()
     }
   }
   const notify = () => {
@@ -122,7 +122,9 @@ export const atom = <T>(value: T) => {
       }
 
       if (shouldNotify) notify()
-      if (shouldRender) requestRender()
+      if (shouldRender) {
+        requestRender()
+      }
 
       shouldNotify = true
       shouldRender = true
@@ -161,7 +163,7 @@ export const atom = <T>(value: T) => {
           program.onBeforeDraw(onBeforeDrawHandlers[i]!)
         }
 
-        requestRenders.push(() => {
+        requestRenderCallbacks.push(() => {
           if (callback?.() === false) return
           program.gl.requestRender()
         })
@@ -207,7 +209,7 @@ export const atom = <T>(value: T) => {
  * responses to state changes in their applications.
  */
 
-export const effect = (callback: () => void, dependencies: (Atom | Token | BufferToken)[]) => {
+export const effect = (callback: () => void, dependencies: (Atom<any> | Token<any> | BufferToken)[]) => {
   const cleanups = dependencies.map((dependency) => dependency.subscribe(callback))
   callback()
   return () => cleanups.forEach((cleanup) => cleanup())

@@ -1,6 +1,6 @@
 import { mat4, vec2, vec3 } from 'gl-matrix'
 
-import { atom, effect } from '@tagl/core/atom'
+import { Atom, effect } from '@tagl/core/atom'
 import { Scene } from '@tagl/world'
 
 export const orbit = (
@@ -21,8 +21,8 @@ export const orbit = (
     ..._config,
   }
 
-  const rotation = atom<vec2>([0, 0])
-  const radius = atom(config?.initialRadius || 10)
+  const rotation = new Atom<vec2>([0, 0])
+  const radius = new Atom(config?.initialRadius || 10)
 
   const _matrix = mat4.create()
 

@@ -1,11 +1,11 @@
 import { vec3, vec4 } from 'gl-matrix'
 
-import { atom } from '@tagl/core'
+import { Atom } from '@tagl/core/atom'
 import { Frame } from '@tagl/core/data-structures/frame'
-import { Frustum, Shape } from '@tagl/world'
+import { Frustum, Object, Shape } from '@tagl/world'
 
 export class AABB {
-  bounds = atom<{
+  bounds = new Atom<{
     x: {
       min: number
       max: number
@@ -37,7 +37,7 @@ export class AABB {
   object: Shape
 
   constructor(_object: Shape | Object, auto = true) {
-    this.object = 'shape' in _object ? _object.shape : _object
+    this.object = _object instanceof Object ? _object.shape : _object
     this.frame = new Frame<Float32Array>(null!)
     if (auto) this.object.node.onUpdate(this.computeBounds.bind(this))
     this.computeBounds()

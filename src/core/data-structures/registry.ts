@@ -10,7 +10,7 @@ export class RegistryBase<TKey, TData = unknown> {
     return this.map.get(key)
   }
 
-  _register(key: TKey, data: () => TData) {
+  _register<T extends TData>(key: TKey, data: () => T) {
     const record = this.map.get(key)
     if (!record) {
       const entry = {
@@ -21,8 +21,11 @@ export class RegistryBase<TKey, TData = unknown> {
       this.map.set(key, entry)
       return entry
     } else {
-      // record.count++
-      return record
+      return record as {
+        value: T
+        count: number
+        dirty: boolean
+      }
     }
   }
 

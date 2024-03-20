@@ -1,9 +1,9 @@
-import { atom, type Atom } from './atom'
+import { Atom } from './atom'
 import { DequeMap } from './data-structures/deque-map'
 import { glsl, type ShaderToken } from './glsl'
-import { buffer, type BufferToken } from './tokens'
+import { Buffer, buffer } from './tokens'
+import { Token } from './tokens/token'
 import { GLLocation, RenderMode } from './types'
-import { isAtom, isBufferToken } from './utils'
 import { glRegistry, ProgramRegistry, type ProgramRecord } from './virtualization/registries'
 import { getVirtualProgram, VirtualProgram } from './virtualization/virtual-program'
 
@@ -13,11 +13,10 @@ import { getVirtualProgram, VirtualProgram } from './virtualization/virtual-prog
 export class GL {
   ctx: WebGL2RenderingContext
   isPending = false
-  stack = atom<(Program | Program[] | DequeMap<any, Program>)[]>([])
+  stack = new Atom<(Program | Program[] | DequeMap<any, Program>)[]>([])
   looping = false
 
   private batching = false
-  private _scheduledRender = false
   private _onResizeCallbacks: ((canvas: HTMLCanvasElement) => void)[] = []
   private _onBeforeRenderCallbacks: ((now: number) => void)[] = []
   private _onLoopCallbacks: ((now: number) => void)[] = []
@@ -30,47 +29,6 @@ export class GL {
     if (!ctx) throw 'could not get context webgl2'
     this.ctx = ctx
     this.stack.subscribe(this.requestRender.bind(this))
-  }
-
-  /**
-   * Registers a callback to be called before rendering.
-   * @param {Function} callback - The callback function to register.
-   * @returns {Function} A function that, when called, will unregister the provided callback.
-   */
-  onBeforeRender(callback: (now: number) => void): Function {
-    this._onBeforeRenderCallbacks.push(callback)
-    return () => {
-      this._onBeforeRenderCallbacks.splice(this._onBeforeRenderCallbacks.indexOf(callback), -1)
-    }
-  }
-
-  /**
-   * Registers a callback to be called at each animation frame if looping is enabled.
-   * @param {Function} callback - The callback function to register, receiving the current timestamp.
-   * @returns {Function} A function that, when called, will unregister the provided callback.
-   */
-  onLoop(callback: (now: number) => void): Function {
-    this._onLoopCallbacks.push(callback)
-
-    if (this._onLoopCallbacks.length === 1) {
-      this.looping = true
-      requestAnimationFrame(this.loop.bind(this))
-    }
-    return () => {
-      this._onLoopCallbacks.splice(this._onLoopCallbacks.indexOf(callback), -1)
-    }
-  }
-
-  /**
-   * Registers a callback to be called when the canvas is resized.
-   * @param {Function} callback - The callback function to register, receiving the canvas element.
-   * @returns {Function} A function that, when called, will unregister the provided callback.
-   */
-  onResize(callback: (canvas: HTMLCanvasElement) => void): Function {
-    this._onResizeCallbacks.push(callback)
-    return () => {
-      this._onResizeCallbacks.splice(this._onResizeCallbacks.indexOf(callback), -1)
-    }
   }
 
   /**
@@ -131,10 +89,51 @@ export class GL {
       mode: Atom<RenderMode> | RenderMode
     } & (
       | { count: number | Atom<number>; indices?: never }
-      | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
+      | { indices: number[] | Atom<Uint16Array> | Buffer<Uint16Array>; count?: never }
     )
   ): Program {
     return new Program({ gl: this, ...options })
+  }
+
+  /**
+   * Registers a callback to be called before rendering.
+   * @param {Function} callback - The callback function to register.
+   * @returns {Function} A function that, when called, will unregister the provided callback.
+   */
+  onBeforeRender(callback: (now: number) => void): Function {
+    this._onBeforeRenderCallbacks.push(callback)
+    return () => {
+      this._onBeforeRenderCallbacks.splice(this._onBeforeRenderCallbacks.indexOf(callback), -1)
+    }
+  }
+
+  /**
+   * Registers a callback to be called at each animation frame if looping is enabled.
+   * @param {Function} callback - The callback function to register, receiving the current timestamp.
+   * @returns {Function} A function that, when called, will unregister the provided callback.
+   */
+  onLoop(callback: (now: number) => void): Function {
+    this._onLoopCallbacks.push(callback)
+
+    if (this._onLoopCallbacks.length === 1) {
+      this.looping = true
+      requestAnimationFrame(this.loop.bind(this))
+    }
+    return () => {
+      this._onLoopCallbacks.splice(this._onLoopCallbacks.indexOf(callback), -1)
+    }
+  }
+
+  /**
+   * Registers a callback to be called when the canvas is resized.
+   * @param {Function} callback - The callback function to register, receiving the canvas element.
+   * @returns {Function} A function that, when called, will unregister the provided callback.
+   */
+  onResize(callback: (canvas: HTMLCanvasElement) => void): Function {
+    this._onResizeCallbacks.push(callback)
+    return () => {
+      this._onResizeCallbacks.splice(this._onResizeCallbacks.indexOf(callback), -1)
+    }
   }
 
   /**
@@ -162,9 +161,8 @@ export class GL {
    * @private
    * @async
    */
-  private async _render(now: number) {
+  private _render(now: number) {
     this.isPending = false
-    this._scheduledRender = false
 
     for (let i = 0; i < this._onBeforeRenderCallbacks.length; i++) {
       this._onBeforeRenderCallbacks[i]!(now)
@@ -184,8 +182,6 @@ export class GL {
         element!.render()
       }
     }
-
-    // if (this._scheduledRender) this._render()
   }
 }
 
@@ -196,7 +192,7 @@ type ProgramOptions = {
   mode: Atom<RenderMode> | RenderMode
 } & (
   | { count: number | Atom<number>; indices?: never }
-  | { indices: number[] | Atom<Uint16Array> | BufferToken<Uint16Array>; count?: never }
+  | { indices: number[] | Atom<Uint16Array> | Buffer<Uint16Array>; count?: never }
 )
 
 /**
@@ -214,7 +210,7 @@ export class Program {
   mode: Atom<RenderMode>
 
   private _glRecord: { value: { program: WebGLProgram | undefined }; dirty: boolean }
-  private _indicesBuffer: BufferToken<Uint16Array> | undefined
+  private _indicesBuffer: Buffer<Uint16Array> | undefined
   private _onBeforeDrawHandlers: (() => void)[]
   private _options: ProgramOptions
 
@@ -226,7 +222,7 @@ export class Program {
     this.gl = options.gl
     this.vertex = options.vertex
     this.fragment = options.fragment
-    this.mode = isAtom(options.mode) ? options.mode : atom(options.mode || 'TRIANGLES')
+    this.mode = options.mode instanceof Atom ? options.mode : new Atom(options.mode || 'TRIANGLES')
 
     this._options = options
     this._glRecord = glRegistry.register(options.gl.ctx)
@@ -246,9 +242,9 @@ export class Program {
 
     if (options.indices) {
       this._indicesBuffer = (
-        isBufferToken(options.indices)
+        options.indices instanceof Token
           ? options.indices
-          : buffer(isAtom(options.indices) ? options.indices : new Uint16Array(options.indices), {
+          : buffer(options.indices instanceof Atom ? options.indices : new Uint16Array(options.indices), {
               target: 'ELEMENT_ARRAY_BUFFER',
               usage: 'STATIC_DRAW',
             })

@@ -1,13 +1,14 @@
 import { mat4 } from 'gl-matrix'
 import { TODO } from 'internal-utils'
 
-import { Program, atom, uniform } from '@tagl/core'
+import { Program, uniform } from '@tagl/core'
 import { Token } from '@tagl/core/tokens'
 import { Mat4 } from '@tagl/core/types'
 
 import { Scene } from '@tagl/world'
 import { Shape } from '@tagl/world/shapes'
 
+import { Atom } from '@tagl/core/atom'
 import { traverseChildren } from './utils/traverse-children'
 import { traverseParent } from './utils/traverse-parent'
 
@@ -161,7 +162,7 @@ export class Node3D {
 
 export class Origin3D {
   children: Node3D[] = []
-  worldMatrix = atom(mat4.create())
+  worldMatrix = new Atom(mat4.create())
 
   private _updates: Node3D[] = new Array(5000)
   private _updatesTotal: number = 0

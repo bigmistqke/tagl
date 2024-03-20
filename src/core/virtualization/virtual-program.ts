@@ -1,12 +1,12 @@
 import { Registry } from '@tagl/core/data-structures/registry'
-import { BufferOptions } from '@tagl/core/types'
+import { BufferOptions, TypedArray } from '@tagl/core/types'
 
 import { BufferRegistry, TextureRegistry } from './registries'
 import { TextureSlots } from './texture-slots'
 
 export class VirtualProgram {
   private attributes: Map<number, Float32Array>
-  private uniforms: Registry<WebGLUniformLocation, Float32Array | number | number | boolean | HTMLImageElement>
+  private uniforms: Registry<WebGLUniformLocation, TypedArray | number | boolean | HTMLImageElement>
   private buffers: BufferRegistry
   private textures: TextureRegistry
   private textureSlots: TextureSlots
@@ -37,8 +37,11 @@ export class VirtualProgram {
     this.buffers.dirty(value)
   }
 
-  registerUniform(location: WebGLUniformLocation, value: () => Float32Array | number | boolean | HTMLImageElement) {
-    return this.uniforms.register(location, value)
+  registerUniform<T extends TypedArray | number | boolean | HTMLImageElement>(
+    location: WebGLUniformLocation,
+    value: () => T
+  ) {
+    return this.uniforms.register<T>(location, value)
   }
   updateUniform(name: string, value: Float32Array | number) {
     this.uniforms.update(name, value)

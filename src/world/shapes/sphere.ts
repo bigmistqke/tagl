@@ -1,4 +1,4 @@
-import { Atom, atom, effect } from '@tagl/core/atom'
+import { Atom, effect } from '@tagl/core/atom'
 
 import { Object } from './object'
 import { Shape, ShapeOptions } from './shape'
@@ -15,9 +15,9 @@ export class Sphere<TData extends Record<string, any>> extends Object<TData> {
       rings: number
     }
   ) {
-    const vertices = atom(new Float32Array())
-    const uv = atom(new Float32Array())
-    const indices = atom(new Uint16Array())
+    const vertices = new Atom(new Float32Array())
+    const uv = new Atom(new Float32Array())
+    const indices = new Atom(new Uint16Array())
 
     const shape = new Shape<TData>({
       vertices,
@@ -30,9 +30,9 @@ export class Sphere<TData extends Record<string, any>> extends Object<TData> {
 
     super(shape)
 
-    this.radius = atom(options.radius)
-    this.segments = atom(options.segments)
-    this.rings = atom(options.rings)
+    this.radius = new Atom(options.radius)
+    this.segments = new Atom(options.segments)
+    this.rings = new Atom(options.rings)
 
     effect(this.update.bind(this), [this.radius, this.segments])
   }

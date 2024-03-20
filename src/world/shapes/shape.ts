@@ -1,10 +1,10 @@
-import { mat4 } from 'gl-matrix'
+import { mat4, vec3 } from 'gl-matrix'
 
-import { ShaderToken, atom, attribute, glsl, isShader, uniform } from '@tagl/core'
+import { Program, ShaderToken, attribute, glsl, isShader, uniform } from '@tagl/core'
 import { Atom } from '@tagl/core/atom'
-import { BufferToken, Token, buffer } from '@tagl/core/tokens'
+import { Attribute, Buffer, Uniform, buffer } from '@tagl/core/tokens'
+import { Token } from '@tagl/core/tokens/token'
 import { Mat4, RenderMode, Vec3 } from '@tagl/core/types'
-import { isAtom, isBufferToken, isToken } from '@tagl/core/utils'
 import { Scene } from '@tagl/world'
 import { Node3D, Origin3D } from '@tagl/world/scene-graph'
 
@@ -20,10 +20,10 @@ type ShapeOptionsShader =
     }) => ShaderToken)
 
 type ShapeOptionsBase = {
-  matrix: Mat4 | Token<Mat4> | Atom<Mat4>
+  matrix: Mat4 | Uniform<Mat4> | Atom<Mat4>
   color: Vec3 | Atom<Vec3>
-  vertices: Float32Array | Token<Float32Array> | Atom<Float32Array>
-  uv: Float32Array | Token<Float32Array> | Atom<Float32Array>
+  vertices: Float32Array | Attribute<Float32Array> | Atom<Float32Array>
+  uv: Float32Array | Attribute<Float32Array> | Atom<Float32Array>
   vertex?: ShapeOptionsShader
   fragment?: ShapeOptionsShader
   mode?: RenderMode | Atom<RenderMode>
@@ -34,42 +34,45 @@ type ShapeOptionsCount = ShapeOptionsBase & {
   indices?: never
 }
 type ShapeOptionsIndices = ShapeOptionsBase & {
-  indices: Uint16Array | BufferToken<Uint16Array> | Atom<Uint16Array>
+  indices: Uint16Array | Buffer<Uint16Array> | Atom<Uint16Array>
   count?: never
 }
 export type ShapeOptions = ShapeOptionsCount | ShapeOptionsIndices
 
-export class Shape<TData extends Record<string, any> = {}> {
+export class Shape {
   cache = new Map<Scene, Program>()
-  color: Token<Float32Array | [number, number, number], number | WebGLUniformLocation>
-  count: Atom<number> | Atom<number | undefined>
-  data: Partial<TData> = {}
-  indices: BufferToken<Uint16Array> | undefined
-  node: Node3D
-  program: Program | undefined = undefined
-  uv: Token<Float32Array, number | WebGLUniformLocation>
-  vertices: Token<Float32Array, number | WebGLUniformLocation>
+
   /** local matrix */
   matrix: Token<mat4>
   mode: Atom<RenderMode>
+  color: Uniform<vec3>
+  vertices: Attribute<Float32Array>
+  uv: Attribute<Float32Array>
+  count: Atom<number> | undefined
+  indices: Buffer<Uint16Array> | undefined
+  node: Node3D
+  program: any
 
   constructor(private options: ShapeOptions) {
     this.color = uniform.vec3(options.color)
-    this.vertices = isToken(options.vertices) ? options.vertices : attribute.vec3(options.vertices)
-    this.uv = isToken(options.uv) ? options.uv : attribute.vec2(options.uv)
-    this.matrix = isToken(options.matrix) ? options.matrix : uniform.mat4(options.matrix)
+    this.vertices = options.vertices instanceof Token ? options.vertices : attribute.vec3(options.vertices)
+    this.uv = options.uv instanceof Token ? options.uv : attribute.vec2(options.uv)
+    this.matrix = options.matrix instanceof Token ? options.matrix : uniform.mat4(options.matrix)
 
-    this.mode = isAtom(options.mode) ? options.mode : atom(options.mode || 'TRIANGLES')
+    this.mode = options.mode instanceof Atom ? options.mode : new Atom(options.mode || 'TRIANGLES')
 
-    this.count = isAtom(options.count) ? options.count : atom(options.count)
-    this.indices = options.indices
-      ? isBufferToken(options.indices)
-        ? options.indices
-        : buffer(options.indices, {
-            target: 'ELEMENT_ARRAY_BUFFER',
-            usage: 'STATIC_DRAW',
-          })
-      : undefined
+    this.count =
+      options.count instanceof Atom ? options.count : options.count !== undefined ? new Atom(options.count) : undefined
+
+    this.indices =
+      options.indices !== undefined
+        ? options.indices instanceof Token
+          ? options.indices
+          : buffer(options.indices, {
+              target: 'ELEMENT_ARRAY_BUFFER',
+              usage: 'STATIC_DRAW',
+            })
+        : undefined
 
     this.node = new Node3D(this)
     this.node.onMount(this._mount.bind(this))

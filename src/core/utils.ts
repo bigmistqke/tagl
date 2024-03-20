@@ -1,8 +1,4 @@
 import { mat4, vec3 } from 'gl-matrix'
-import { $TYPE } from '.'
-import { Atom } from './atom'
-import { BufferToken, Token } from './tokens'
-import { Accessor } from './types'
 
 /**********************************************************************************/
 /*                                        LOG                                     */
@@ -14,32 +10,6 @@ export const log = (...args: any) => {
   console.info(...args)
 }
 
-/**********************************************************************************/
-/*                      IS-TOKEN / IS-BUFFER-TOKEN / IS-ATOM                      */
-/**********************************************************************************/
-
-type InferAtomType<T, TKey extends keyof AtomTypes<any>> = T extends { get: infer TAccessor }
-  ? TAccessor extends Accessor<infer TValue>
-    ? AtomTypes<TValue>[TKey]
-    : AtomTypes[TKey]
-  : AtomTypes[TKey]
-
-type AtomTypes<T = any> = {
-  atom: Atom<T>
-  bufferToken: BufferToken<T>
-  token: Token<T>
-}
-
-//@ts-expect-error
-export const isToken = <T>(value: T): value is InferAtomType<T, 'token'> =>
-  typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'token'
-
-//@ts-expect-error
-export const isBufferToken = <T>(value: T): value is InferAtomType<T, 'bufferToken'> =>
-  typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'buffer'
-
-//@ts-expect-error
-export const isAtom = <T>(value: T): value is InferAtomType<T, 'atom'> => value instanceof Atom
 /**********************************************************************************/
 /*                                       WEBGL                                    */
 /**********************************************************************************/

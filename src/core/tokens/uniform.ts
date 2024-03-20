@@ -1,8 +1,15 @@
-import { $TYPE } from '..'
-import { atom } from '../atom'
-import { DataType, Format, InternalFormat, Mat2, Mat3, Mat4, ValueOf, Vec2, Vec3, Vec4 } from '../types'
-import { isAtom, uniformDataTypeToFunctionName } from '../utils'
-import { Token, Variable } from './types'
+import { mat2, mat3, mat4, vec2, vec3, vec4 } from 'gl-matrix'
+import { Atom } from '../atom'
+import { Program } from '../gl'
+import { DataType, Format, InternalFormat, Mat2, Mat3, Mat4, TypedArray, ValueOf, Vec2, Vec3, Vec4 } from '../types'
+import { uniformDataTypeToFunctionName } from '../utils'
+import { Token } from './token'
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                      types                                     */
+/*                                                                                */
+/**********************************************************************************/
 
 export type TextureOptions = {
   dataType: DataType
@@ -12,8 +19,8 @@ export type TextureOptions = {
   width: number
 }
 
-export type UniformParameters = Parameters<UniformProxy[keyof UniformProxy]>
-export type UniformReturnType = ReturnType<ValueOf<UniformProxy>>
+export type UniformParameters = Parameters<Uniforms[keyof Uniforms]>
+export type UniformReturnType = ReturnType<ValueOf<Uniforms>>
 export type Sampler2DOptions = TextureOptions & {
   border: number
   magFilter: 'NEAREST' | 'LINEAR'
@@ -22,89 +29,111 @@ export type Sampler2DOptions = TextureOptions & {
   wrapT: 'CLAMP_TO_EDGE'
 }
 
-export type UniformProxy = {
-  float: Variable<number>
-  int: Variable<number>
-  bool: Variable<boolean>
-  vec2: Variable<Vec2>
-  vec3: Variable<Vec3>
-  vec4: Variable<Vec4>
-  ivec2: Variable<Vec2>
-  ivec3: Variable<Vec3>
-  ivec4: Variable<Vec4>
-  mat2: Variable<Mat2>
-  mat3: Variable<Mat3>
-  mat4: Variable<Mat4>
-  sampler2D: Variable<Float32Array | HTMLImageElement, Sampler2DOptions>
-  isampler2D: Variable<Float32Array, Sampler2DOptions>
-  samplerCube: Variable<Float32Array, Sampler2DOptions>
+// prettier-ignore
+export type Uniforms = {
+  float:     (value: number | Atom<number>) => Uniform<number>
+  int:       (value: number | Atom<number>) => Uniform<number>
+  bool:      (value: boolean | Atom<boolean>) => Uniform<boolean>
+  vec2:      (value: Vec2 | Atom<Vec2>) => Uniform<Vec2>
+  vec3:      (value: Vec3 | Atom<Vec3>) => Uniform<Vec3>
+  vec4:      (value: Vec4 | Atom<Vec4>) => Uniform<Vec4>
+  ivec2:     (value: Vec2 | Atom<Vec2>) => Uniform<Vec2>
+  ivec3:     (value: Vec3 | Atom<Vec3>) => Uniform<Vec3>
+  ivec4:     (value: Vec4 | Atom<Vec4>) => Uniform<Vec4>
+  mat2:      (value: Mat2 | Atom<Mat2>) => Uniform<Mat2>
+  mat3:      (value: Mat3 | Atom<Mat3>) => Uniform<Mat3>
+  mat4:      (value: Mat4 | Atom<Mat4>) => Uniform<Mat4>
+  sampler2D: (
+    value: Float32Array | HTMLImageElement | Atom<Float32Array> | Atom<HTMLImageElement>
+  ) => Uniform<Float32Array | HTMLImageElement>
+  isampler2D: (
+    value: Float32Array | HTMLImageElement | Atom<Float32Array> | Atom<HTMLImageElement>
+  ) => Uniform<Float32Array | HTMLImageElement>
+  samplerCube: (
+    value: Float32Array | HTMLImageElement | Atom<Float32Array> | Atom<HTMLImageElement>
+  ) => Uniform<Float32Array | HTMLImageElement>
 }
 
-/**
- * Utility to inject uniform into `glsl`-templates.
- * @example
- *
- * ```ts
- * // dynamic
- * const [color] = createSignal([0, 1, 2])
- * glsl`
- *  vec3 color = ${uniform.vec3(color)};
- * `
- * // static
- * glsl`
- *  vec3 color = ${uniform.vec3([0, 1, 2])};
- * `
- * ```
- * */
-export const uniform = new Proxy({} as UniformProxy, {
-  get(target, type: string) {
-    return (...[value, options]: UniformParameters) => {
-      const functionName = uniformDataTypeToFunctionName(type)
-      const _atom = isAtom(value) ? value : atom<any>(value)
+/**********************************************************************************/
+/*                                                                                */
+/*                                     Uniform                                    */
+/*                                                                                */
+/**********************************************************************************/
 
-      const get = () => _atom.get.bind(_atom)()
+export class Uniform<
+  T extends number | boolean | TypedArray | vec2 | vec3 | vec4 | mat2 | mat3 | mat4 | HTMLImageElement
+> extends Token<T> {
+  __: {
+    bind: (program: Program, location: WebGLUniformLocation) => Uniform<T>
+    getLocation: (program: Program, name: string) => WebGLUniformLocation
+    notify: () => void
+    requestRender: () => void
+    template: (name: string) => string | undefined
+    update: (program: Program, location: WebGLUniformLocation) => void
+  }
 
-      const token: Token = {
-        [$TYPE]: 'token',
-        get: _atom.get.bind(_atom),
-        set: _atom.set.bind(_atom),
-        subscribe: _atom.subscribe.bind(_atom),
-        onBeforeDraw: _atom.onBeforeDraw.bind(_atom),
-        onBind: _atom.onBind.bind(_atom),
-        __: {
-          requestRender: _atom.__.requestRender.bind(_atom),
-          notify: _atom.__.notify.bind(_atom),
-          bind: (program, location) => {
-            const uniform = program.virtualProgram.registerUniform(location, get)
-            _atom.__.bind(program, () => {
-              if (uniform.dirty) return false
-              uniform.dirty = true
-            })
-            return token
-          },
-          template: (name: string) => `uniform ${type} ${name};`,
-          getLocation: (program, name) => program.gl.ctx.getUniformLocation(program.glProgram, name)!,
-          update: (program, location) => {
-            const uniform = program.virtualProgram.registerUniform(location, get)
+  constructor(value: T, type: keyof Uniforms) {
+    super(value)
 
-            if (uniform.value === get() && !uniform.dirty) {
-              return
-            }
+    const functionName = uniformDataTypeToFunctionName(type)
 
-            uniform.dirty = false
-            uniform.value = get()
+    this.__ = {
+      requestRender: this.atom.__.requestRender,
+      notify: this.atom.__.notify,
+      bind: (program, location) => {
+        const uniform = program.virtualProgram.registerUniform(location, this.get)
+        this.atom.__.bind(program, () => {
+          if (uniform.dirty) return false
+          uniform.dirty = true
+        })
+        return this
+      },
+      template: (name: string) => `uniform ${type} ${name};`,
+      getLocation: (program, name) => program.gl.ctx.getUniformLocation(program.glProgram, name)!,
+      update: (program, location) => {
+        const uniform = program.virtualProgram.registerUniform(location, this.get)
 
-            if (type.includes('mat')) {
-              // @ts-expect-error
-              program.gl.ctx[functionName](location, false, uniform.value)
-            } else {
-              // @ts-expect-error
-              program.gl.ctx[functionName](location, uniform.value)
-            }
-          },
-        },
-      }
-      return token
+        if (uniform.value === this.get() && !uniform.dirty) {
+          return
+        }
+
+        uniform.dirty = false
+        uniform.value = this.get()
+
+        if (type.includes('mat')) {
+          // @ts-expect-error
+          program.gl.ctx[functionName](location, false, uniform.value)
+        } else {
+          // @ts-expect-error
+          program.gl.ctx[functionName](location, uniform.value)
+        }
+      },
     }
+  }
+}
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                  uniform-proxy                                 */
+/*                                                                                */
+/**********************************************************************************/
+
+/**
+ * template-helper to inject attribute into `glsl`
+ * @example
+ * ```ts
+ * const matrix = uniform.mat4(new Float32Array([...]))
+ *
+ * glsl`
+ *  mat4 matrix = ${matrix};
+ * `
+ * matrix.set(matrix => {
+ *    matrix[0] = 0
+ *    return matrix
+ * })
+ * */
+export const uniform = new Proxy({} as Uniforms, {
+  get(target, type: keyof Uniforms) {
+    return (...[value, options]: UniformParameters) => new Uniform(value, type)
   },
 })

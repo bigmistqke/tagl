@@ -1,4 +1,5 @@
 import { GL, Program } from './gl'
+import { Buffer, Token } from './tokens'
 
 type SetterArgument<T> = T | ((value: T, flags: SetterFlags) => T)
 type SetterFlags = {
@@ -7,7 +8,252 @@ type SetterFlags = {
 }
 
 /**********************************************************************************/
-/*                                       ATOM                                     */
+/*                                                                                */
+/*                                       Atom                                     */
+/*                                                                                */
+/**********************************************************************************/
+
+/**
+ * Represents a reactive data atom that manages subscriptions and rendering for WebGL programs.
+ * The Atom class encapsulates a value of generic type `T`, offering a way to react to changes in this value
+ * through subscriptions and rendering callbacks. It integrates closely with WebGL programs, providing lifecycle hooks
+ * for rendering operations and program binding.
+ *
+ * @template T The type of the value encapsulated by the Atom.
+ *
+ * @example
+ * Creating an atom and subscribing to its changes:
+ * ```javascript
+ * const countAtom = new Atom(0); // Initializes an atom with the value 0.
+ *
+ * const unsubscribe = countAtom.subscribe((newValue) => {
+ *   console.log(`The new count is ${newValue}.`);
+ * });
+ *
+ * // Increment the count. Logs "The new count is 1."
+ * countAtom.set((currentValue) => currentValue + 1);
+ *
+ * // Stop listening to changes.
+ * unsubscribe();
+ * ```
+ *
+ * @example
+ * Preventing unnecessary renders or notifications:
+ * ```javascript
+ * const configAtom = new Atom({ silent: false, render: true });
+ *
+ * configAtom.set((currentValue, flags) => {
+ *   if (currentValue.silent) {
+ *     flags.preventNotification();
+ *   }
+ *   if (!currentValue.render) {
+ *     flags.preventRender();
+ *   }
+ *   return { ...currentValue, silent: !currentValue.silent };
+ * });
+ * ```
+ *
+ * @example
+ * Using `onBeforeDraw` for rendering actions:
+ * ```javascript
+ * const visualAtom = new Atom({ color: 'blue' });
+ *
+ * visualAtom.onBeforeDraw(() => {
+ *   console.log(`Preparing to draw with the color ${visualAtom.get().color}.`);
+ * });
+ * // Assuming `visualAtom` is associated with a renderable object,
+ * // this callback would run before the object is drawn.
+ * ```
+ */
+export class Atom<T> {
+  /**
+   * A cache of WebGL contexts to ensure each program is only bound once.
+   * @private
+   * @type {Set<GL>}
+   */
+  private cache = new Set<GL>()
+
+  /**
+   * Handlers to be called before each draw operation.
+   * @private
+   * @type {(() => void)[]}
+   */
+  private onBeforeDrawHandlers: (() => void)[] = []
+
+  /**
+   * Handlers to be called when a program is bound.
+   * @private
+   * @type {((program: Program) => void)[]}
+   */
+  private onBindHandlers: ((program: Program) => void)[] = []
+
+  /**
+   * A list of WebGL programs associated with this Atom.
+   * @private
+   * @type {Program[]}
+   */
+  private programs: Program[] = []
+
+  /**
+   * Callbacks to request a render operation.
+   * @private
+   * @type {(() => void)[]}
+   */
+  private requestRenderCallbacks: (() => void)[] = []
+
+  /**
+   * Controls whether subscribers should be notified upon value changes.
+   * @private
+   * @type {boolean}
+   */
+  private shouldNotify = true
+
+  /**
+   * Controls whether a render should be requested upon value changes.
+   * @private
+   * @type {boolean}
+   */
+  private shouldRender = true
+
+  /**
+   * Subscription callbacks that are notified when the Atom's value changes.
+   * @private
+   * @type {((value: T) => void)[]}
+   */
+  private subscriptions: ((value: T) => void)[] = []
+
+  /**
+   * Flags to control notification and rendering behavior dynamically.
+   * @private
+   * @type {SetterFlags}
+   */
+  private flags: SetterFlags = {
+    preventNotification: () => (this.shouldNotify = false),
+    preventRender: () => (this.shouldRender = false),
+  }
+
+  /**
+   * Constructs a new Atom with an initial value.
+   *
+   * @param {T} value The initial value of the Atom.
+   */
+  constructor(public value: T) {}
+
+  /**
+   * Retrieves the current value of the Atom.
+   *
+   * @returns {T} The current value of the Atom.
+   */
+  get() {
+    return this.value
+  }
+
+  /**
+   * Updates the Atom's value and triggers notifications and render requests as appropriate.
+   *
+   * @param {SetterArgument<T>} _value The new value for the Atom, or a function to produce the new value.
+   */
+  set(_value: SetterArgument<T>) {
+    if (typeof _value === 'function') {
+      // @ts-expect-error
+      this.value = _value(this.value, this.flags)
+    } else {
+      this.value = _value
+    }
+
+    if (this.shouldNotify) this.__.notify()
+    if (this.shouldRender) {
+      this.__.requestRender()
+    }
+
+    this.shouldNotify = true
+    this.shouldRender = true
+  }
+
+  /**
+   * Registers a callback to be called before each draw operation.
+   *
+   * @param {() => void} callback The callback to register.
+   * @returns {() => void} A function to deregister the callback.
+   */
+  onBeforeDraw(callback: () => void) {
+    this.onBeforeDrawHandlers.push(callback)
+    this.programs.forEach((program) => program.onBeforeDraw(callback))
+    return () => {
+      console.error('TODO')
+    }
+  }
+
+  /**
+   * Registers a handler to be called when a program is bound.
+   *
+   * @param {(program: Program) => void} handler The handler to register.
+   * @returns {() => void} A function to deregister the handler.
+   */
+  onBind(handler: (program: Program) => void) {
+    this.onBindHandlers.push(handler)
+    return () => {}
+  }
+
+  /**
+   * Subscribes to changes in the Atom's value.
+   *
+   * @param {(value: T) => void} callback The subscription callback.
+   * @returns {() => void} A function to unsubscribe the callback.
+   */
+  subscribe(callback: (value: T) => void) {
+    this.subscriptions.push(callback)
+    return () => {
+      console.error('TODO')
+      /* subscriptions.delete(callback) */
+    }
+  }
+
+  /**
+   * Internal methods for Atom lifecycle events: binding, requesting renders, and notifying subscribers.
+   * @private
+   */
+  __ = {
+    /**
+     * Binds a WebGL program to this Atom, setting up necessary lifecycle hooks.
+     * @param {Program} program The WebGL program to bind.
+     * @param {() => false | void} [callback] Optional callback to execute on each render request.
+     */
+    bind: (program: Program, callback?: () => false | void) => {
+      if (this.cache.has(program.gl)) return
+      this.cache.add(program.gl)
+
+      this.onBindHandlers.forEach((handler) => handler(program))
+
+      this.programs.push(program)
+      this.onBeforeDrawHandlers.forEach((handler) => program.onBeforeDraw(handler))
+
+      this.requestRenderCallbacks.push(() => {
+        if (callback?.() === false) return
+        program.gl.requestRender()
+      })
+    },
+
+    /**
+     * Requests a render operation for all bound programs.
+     */
+    requestRender: () => {
+      this.requestRenderCallbacks.forEach((callback) => callback())
+    },
+
+    /**
+     * Notifies all subscribers of the Atom's current value.
+     */
+    notify: () => {
+      this.subscriptions.forEach((subscription) => subscription(this.value))
+    },
+  }
+}
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                  atom-wrapper                                  */
+/*                                                                                */
 /**********************************************************************************/
 
 /**
@@ -30,7 +276,7 @@ type SetterFlags = {
  * @example
  * Creating an atom and subscribing to its changes:
  * ```javascript
- * const countAtom = atom(0); // Initializes an atom with the value 0.
+ * const countAtom = new Atom(0); // Initializes an atom with the value 0.
  *
  * const unsubscribe = countAtom.subscribe((newValue) => {
  *   console.log(`The new count is ${newValue}.`);
@@ -46,7 +292,7 @@ type SetterFlags = {
  *@example
  * Preventing unnecessary renders or notifications:
  * ```javascript
- * const configAtom = atom({ silent: false, render: true });
+ * const configAtom = new Atom({ silent: false, render: true });
  *
  * configAtom.set((currentValue, config) => {
  *   if (currentValue.silent) {
@@ -62,7 +308,7 @@ type SetterFlags = {
  * @example
  * Using `onBeforeDraw` for rendering actions:
  * ```javascript
- * const visualAtom = atom({ color: 'blue' });
+ * const visualAtom = new Atom({ color: 'blue' });
  *
  * visualAtom.onBeforeDraw(() => {
  *   console.log(`Preparing to draw with the color ${visualAtom.get().color}.`);
@@ -74,95 +320,7 @@ type SetterFlags = {
  * Additionally, the atom integrates with rendering mechanisms through the onBind and onBeforeDraw methods, allowing for efficient updates and rendering control.
  */
 
-export const atom = <T>(value: T) => new Atom(value)
-
-export class Atom<T> {
-  private cache = new Set<GL>()
-  private onBeforeDrawHandlers: (() => void)[] = []
-  private onBindHandlers: ((program: Program) => void)[] = []
-  private programs: Program[] = []
-  private requestRenderCallbacks: (() => void)[] = []
-  private shouldNotify = true
-  private shouldRender = true
-  private subscriptions: ((value: T) => void)[] = []
-  private flags: SetterFlags = {
-    preventNotification: () => (this.shouldNotify = false),
-    preventRender: () => (this.shouldRender = false),
-  }
-
-  constructor(public value: T) {}
-
-  __ = {
-    bind: (program: Program, callback?: () => false | void) => {
-      if (this.cache.has(program.gl)) return
-      this.cache.add(program.gl)
-
-      for (let i = 0; i < this.onBindHandlers.length; i++) {
-        this.onBindHandlers[i]!(program)
-      }
-
-      this.programs.push(program)
-      for (let i = 0; i < this.onBeforeDrawHandlers.length; i++) {
-        program.onBeforeDraw(this.onBeforeDrawHandlers[i]!)
-      }
-
-      this.requestRenderCallbacks.push(() => {
-        if (callback?.() === false) return
-        program.gl.requestRender()
-      })
-    },
-    requestRender: () => {
-      for (let i = 0; i < this.requestRenderCallbacks.length; i++) {
-        this.requestRenderCallbacks[i]!()
-      }
-    },
-    notify: () => {
-      for (let i = 0; i < this.subscriptions.length; i++) {
-        this.subscriptions[i]!(this.value)
-      }
-    },
-  }
-
-  get() {
-    return this.value
-  }
-  set(_value: SetterArgument<T>) {
-    if (typeof _value === 'function') {
-      // @ts-expect-error
-      this.value = _value(this.value, this.flags)
-    } else {
-      this.value = _value
-    }
-
-    if (this.shouldNotify) this.__.notify()
-    if (this.shouldRender) {
-      this.__.requestRender()
-    }
-
-    this.shouldNotify = true
-    this.shouldRender = true
-  }
-  onBeforeDraw(callback: () => void) {
-    this.onBeforeDrawHandlers.push(callback)
-    for (let i = 0; i < this.programs.length; i++) {
-      this.programs[i]!.onBeforeDraw(callback)
-    }
-    return () => {
-      console.error('TODO')
-    }
-  }
-  onBind(handler: (program: Program) => void) {
-    this.onBindHandlers.push(handler)
-    return () => {}
-  }
-  subscribe(callback: (value: T) => void) {
-    this.subscriptions.push(callback)
-    return () => {
-      console.error('TODO')
-      /* subscriptions.delete(callback) */
-    }
-  }
-}
+// export const atom = <T>(value: T) => new Atom(value)
 
 /**********************************************************************************/
 /*                                     EFFECT                                     */
@@ -197,7 +355,7 @@ export class Atom<T> {
  * responses to state changes in their applications.
  */
 
-export const effect = (callback: () => void, dependencies: (Atom<any> | Token<any> | BufferToken)[]) => {
+export const effect = (callback: () => void, dependencies: (Atom<any> | Token<any> | Buffer<any>)[]) => {
   const cleanups = dependencies.map((dependency) => dependency.subscribe(callback))
   callback()
   return () => cleanups.forEach((cleanup) => cleanup())

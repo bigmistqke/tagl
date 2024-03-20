@@ -1,10 +1,10 @@
 import { Program } from './gl'
-import { Token } from './tokens'
+import { Attribute, Uniform } from './tokens'
 import { GLLocation } from './types'
 import { shaderCompilationRegistry } from './virtualization/registries'
 
 const GLSL = Symbol()
-export const glsl = function (template: TemplateStringsArray, ...tokens: Token<any>[]) {
+export const glsl = function (template: TemplateStringsArray, ...tokens: (Attribute<any> | Uniform<any>)[]) {
   let { names, compilation } = shaderCompilationRegistry.register(template, tokens).value
   return {
     [GLSL]: true,

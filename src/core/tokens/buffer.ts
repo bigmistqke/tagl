@@ -1,8 +1,12 @@
-import { Program } from 'typescript'
-import { $TYPE } from '..'
-import { Atom, atom } from '../atom'
-import { Accessor, Setter } from '../types'
-import { isAtom } from '../utils'
+import { Program } from '..'
+import { Atom } from '../atom'
+import { Token } from './token'
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                      types                                     */
+/*                                                                                */
+/**********************************************************************************/
 
 export type BufferUsage =
   | 'STATIC_DRAW'
@@ -29,40 +33,27 @@ export type BufferOptions = {
   usage: BufferUsage
 }
 
-export type BufferToken<T = Float32Array> = {
-  [$TYPE]: 'buffer'
-  set: Setter<T>
-  get: Accessor<T>
-  subscribe: (callback: (value: T) => void) => () => void
+/**********************************************************************************/
+/*                                                                                */
+/*                                     Buffer                                     */
+/*                                                                                */
+/**********************************************************************************/
+
+export class Buffer<T extends BufferSource> extends Token<T> {
   __: {
-    bind: (program: Program) => BufferToken<T>
-    update: (program: Program) => BufferToken<T>
-  }
-}
-
-const cache = new WeakMap<Program, Map<string, WebGLBuffer>>()
-
-export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: BufferOptions): BufferToken<T> => {
-  const options: BufferOptions = {
-    target: 'ARRAY_BUFFER',
-    usage: 'STATIC_DRAW',
-    ..._options,
+    bind: (program: Program) => Buffer<T>
+    update: (program: Program) => void
   }
 
-  const _atom = isAtom<T>(value) ? value : atom(value)
-
-  const token: BufferToken<T> = {
-    [$TYPE]: 'buffer',
-    get: _atom.get.bind(_atom),
-    set: _atom.set.bind(_atom),
-    subscribe: _atom.subscribe.bind(_atom),
-    __: {
+  constructor(value: T | Atom<T>, options: BufferOptions) {
+    super(value)
+    this.__ = {
       bind: (program) => {
-        _atom.__.bind(program)
-        return token
+        this.atom.__.bind(program)
+        return this
       },
       update: (program) => {
-        const buffer = program.virtualProgram.registerBuffer(_atom.get(), options)
+        const buffer = program.virtualProgram.registerBuffer(this.get(), options)
 
         if (!cache.has(program)) {
           cache.set(program, new Map())
@@ -76,14 +67,20 @@ export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: Bu
         }
 
         if (buffer.dirty) {
-          program.gl.ctx.bufferData(program.gl.ctx[options.target], _atom.get(), program.gl.ctx[options.usage])
+          program.gl.ctx.bufferData(program.gl.ctx[options.target], this.get(), program.gl.ctx[options.usage])
           buffer.dirty = false
         }
-
-        //return token
       },
-    },
+    }
   }
+}
 
-  return token
+const cache = new WeakMap<Program, Map<string, WebGLBuffer>>()
+
+export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: BufferOptions) => {
+  return new Buffer(value, {
+    target: 'ARRAY_BUFFER',
+    usage: 'STATIC_DRAW',
+    ..._options,
+  })
 }

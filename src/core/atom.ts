@@ -1,24 +1,14 @@
-import { $TYPE } from '.'
 import { GL, Program } from './gl'
-import type { BufferToken, Token } from './tokens'
-import type { Accessor, Setter } from './types'
+
+type SetterArgument<T> = T | ((value: T, flags: SetterFlags) => T)
+type SetterFlags = {
+  preventNotification: () => void
+  preventRender: () => void
+}
 
 /**********************************************************************************/
 /*                                       ATOM                                     */
 /**********************************************************************************/
-export type Atom<T = any> = {
-  [$TYPE]: 'atom'
-  set: Setter<T>
-  get: Accessor<T>
-  onBeforeDraw: (handler: () => void) => () => void
-  onBind: (handler: (program: Program) => void) => () => void
-  subscribe: (callback: (value: T) => void) => () => void
-  __: {
-    bind: (program: Program, callback?: () => false | void) => void
-    requestRender: () => void
-    notify: () => void
-  }
-}
 
 /**
  * Creates and returns a new atom object. An atom is a state management tool that allows you to store, update,
@@ -84,96 +74,94 @@ export type Atom<T = any> = {
  * Additionally, the atom integrates with rendering mechanisms through the onBind and onBeforeDraw methods, allowing for efficient updates and rendering control.
  */
 
-export const atom = <T>(value: T) => {
-  const cache = new Set<GL>()
+export const atom = <T>(value: T) => new Atom(value)
 
-  let shouldNotify = true
-  let shouldRender = true
-  const config = {
-    preventNotification: () => (shouldNotify = false),
-    preventRender: () => (shouldRender = false),
+export class Atom<T> {
+  private cache = new Set<GL>()
+  private onBeforeDrawHandlers: (() => void)[] = []
+  private onBindHandlers: ((program: Program) => void)[] = []
+  private programs: Program[] = []
+  private requestRenderCallbacks: (() => void)[] = []
+  private shouldNotify = true
+  private shouldRender = true
+  private subscriptions: ((value: T) => void)[] = []
+  private flags: SetterFlags = {
+    preventNotification: () => (this.shouldNotify = false),
+    preventRender: () => (this.shouldRender = false),
   }
 
-  const subscriptions: ((value: T) => void)[] = []
-  const requestRenderCallbacks: (() => void)[] = []
-  const requestRender = () => {
-    for (let i = 0; i < requestRenderCallbacks.length; i++) {
-      requestRenderCallbacks[i]!()
+  constructor(public value: T) {}
+
+  __ = {
+    bind: (program: Program, callback?: () => false | void) => {
+      if (this.cache.has(program.gl)) return
+      this.cache.add(program.gl)
+
+      for (let i = 0; i < this.onBindHandlers.length; i++) {
+        this.onBindHandlers[i]!(program)
+      }
+
+      this.programs.push(program)
+      for (let i = 0; i < this.onBeforeDrawHandlers.length; i++) {
+        program.onBeforeDraw(this.onBeforeDrawHandlers[i]!)
+      }
+
+      this.requestRenderCallbacks.push(() => {
+        if (callback?.() === false) return
+        program.gl.requestRender()
+      })
+    },
+    requestRender: () => {
+      for (let i = 0; i < this.requestRenderCallbacks.length; i++) {
+        this.requestRenderCallbacks[i]!()
+      }
+    },
+    notify: () => {
+      for (let i = 0; i < this.subscriptions.length; i++) {
+        this.subscriptions[i]!(this.value)
+      }
+    },
+  }
+
+  get() {
+    return this.value
+  }
+  set(_value: SetterArgument<T>) {
+    if (typeof _value === 'function') {
+      // @ts-expect-error
+      this.value = _value(this.value, this.flags)
+    } else {
+      this.value = _value
+    }
+
+    if (this.shouldNotify) this.__.notify()
+    if (this.shouldRender) {
+      this.__.requestRender()
+    }
+
+    this.shouldNotify = true
+    this.shouldRender = true
+  }
+  onBeforeDraw(callback: () => void) {
+    this.onBeforeDrawHandlers.push(callback)
+    for (let i = 0; i < this.programs.length; i++) {
+      this.programs[i]!.onBeforeDraw(callback)
+    }
+    return () => {
+      console.error('TODO')
     }
   }
-  const notify = () => {
-    for (let i = 0; i < subscriptions.length; i++) {
-      subscriptions[i]!(value)
+  onBind(handler: (program: Program) => void) {
+    this.onBindHandlers.push(handler)
+    return () => {}
+  }
+  subscribe(callback: (value: T) => void) {
+    this.subscriptions.push(callback)
+    return () => {
+      console.error('TODO')
+      /* subscriptions.delete(callback) */
     }
   }
-  const onBeforeDrawHandlers: (() => void)[] = []
-  const onBindHandlers: ((program: Program) => void)[] = []
-  const programs: Program[] = []
-
-  const atom: Atom<T> = {
-    [$TYPE]: 'atom',
-    get: () => value,
-    set: (_value) => {
-      if (typeof _value === 'function') {
-        // @ts-expect-error
-        value = _value(value, config)
-      } else {
-        value = _value
-      }
-
-      if (shouldNotify) notify()
-      if (shouldRender) {
-        requestRender()
-      }
-
-      shouldNotify = true
-      shouldRender = true
-    },
-    onBeforeDraw: (callback: () => void) => {
-      onBeforeDrawHandlers.push(callback)
-      for (let i = 0; i < programs.length; i++) {
-        programs[i]!.onBeforeDraw(callback)
-      }
-      return () => {
-        console.error('TODO')
-      }
-    },
-    onBind: (handler: (program: Program) => void) => {
-      onBindHandlers.push(handler)
-      return () => {}
-    },
-    subscribe: (callback: (value: T) => void) => {
-      subscriptions.push(callback)
-      return () => {
-        console.error('TODO')
-        /* subscriptions.delete(callback) */
-      }
-    },
-    __: {
-      bind: (program, callback) => {
-        if (cache.has(program.gl)) return
-        cache.add(program.gl)
-
-        for (let i = 0; i < onBindHandlers.length; i++) {
-          onBindHandlers[i]!(program)
-        }
-
-        programs.push(program)
-        for (let i = 0; i < onBeforeDrawHandlers.length; i++) {
-          program.onBeforeDraw(onBeforeDrawHandlers[i]!)
-        }
-
-        requestRenderCallbacks.push(() => {
-          if (callback?.() === false) return
-          program.gl.requestRender()
-        })
-      },
-      requestRender,
-      notify,
-    },
-  }
-
-  return atom
 }
 
 /**********************************************************************************/

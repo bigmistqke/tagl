@@ -39,9 +39,7 @@ export const isBufferToken = <T>(value: T): value is InferAtomType<T, 'bufferTok
   typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'buffer'
 
 //@ts-expect-error
-export const isAtom = <T>(value: T): value is InferAtomType<T, 'atom'> =>
-  typeof value === 'object' && value !== null && $TYPE in value && value[$TYPE] === 'atom'
-
+export const isAtom = <T>(value: T): value is InferAtomType<T, 'atom'> => value instanceof Atom
 /**********************************************************************************/
 /*                                       WEBGL                                    */
 /**********************************************************************************/

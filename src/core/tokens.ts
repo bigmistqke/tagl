@@ -106,21 +106,23 @@ export const uniform = new Proxy({} as UniformProxy, {
   get(target, type: string) {
     return (...[value, options]: UniformParameters) => {
       const functionName = uniformDataTypeToFunctionName(type)
-      const { __, get, subscribe, onBeforeDraw, set, onBind } = isAtom(value) ? value : atom<any>(value)
+      const _atom = isAtom(value) ? value : atom<any>(value)
 
-      const token: Token<Exclude<typeof value, Atom>> = {
+      const get = () => _atom.get.bind(_atom)()
+
+      const token: Token = {
         [$TYPE]: 'token',
-        get,
-        set,
-        subscribe,
-        onBeforeDraw,
-        onBind,
+        get: _atom.get.bind(_atom),
+        set: _atom.set.bind(_atom),
+        subscribe: _atom.subscribe.bind(_atom),
+        onBeforeDraw: _atom.onBeforeDraw.bind(_atom),
+        onBind: _atom.onBind.bind(_atom),
         __: {
-          requestRender: __.requestRender,
-          notify: __.notify,
+          requestRender: _atom.__.requestRender.bind(_atom),
+          notify: _atom.__.notify.bind(_atom),
           bind: (program, location) => {
             const uniform = program.virtualProgram.registerUniform(location, get)
-            __.bind(program, () => {
+            _atom.__.bind(program, () => {
               if (uniform.dirty) return false
               uniform.dirty = true
             })
@@ -207,16 +209,17 @@ export const attribute = new Proxy({} as AttributeProxy, {
     return (...[value, _options]: AttributeParameters): Token => {
       const size = dataTypeToSize(type)
 
-      const { get, set, subscribe, __ } = isAtom(value) ? value : atom<any>(value)
+      const _atom = isAtom(value) ? value : atom<any>(value)
+      const get = () => _atom.get.bind(_atom)()
 
       const token: Token<Exclude<typeof value, Atom>> = {
         [$TYPE]: 'token',
-        get,
-        set,
-        subscribe,
+        get: _atom.get.bind(_atom),
+        set: _atom.set.bind(_atom),
+        subscribe: _atom.subscribe.bind(_atom),
         __: {
           bind: (program, location) => {
-            __.bind(program, () => {
+            _atom.__.bind(program, () => {
               program.virtualProgram.dirtyAttribute(location as number)
             })
             return token
@@ -299,20 +302,20 @@ export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: Bu
     ..._options,
   }
 
-  const { get, subscribe, set, __ } = isAtom<T>(value) ? value : atom(value)
+  const _atom = isAtom<T>(value) ? value : atom(value)
 
   const token: BufferToken<T> = {
     [$TYPE]: 'buffer',
-    get,
-    set,
-    subscribe,
+    get: _atom.get.bind(_atom),
+    set: _atom.set.bind(_atom),
+    subscribe: _atom.subscribe.bind(_atom),
     __: {
       bind: (program) => {
-        __.bind(program)
+        _atom.__.bind(program)
         return token
       },
       update: (program) => {
-        const buffer = program.virtualProgram.registerBuffer(get(), options)
+        const buffer = program.virtualProgram.registerBuffer(_atom.get(), options)
 
         if (!cache.has(program)) {
           cache.set(program, new Map())
@@ -326,7 +329,7 @@ export const buffer = <T extends BufferSource>(value: T | Atom<T>, _options?: Bu
         }
 
         if (buffer.dirty) {
-          program.gl.ctx.bufferData(program.gl.ctx[options.target], get(), program.gl.ctx[options.usage])
+          program.gl.ctx.bufferData(program.gl.ctx[options.target], _atom.get(), program.gl.ctx[options.usage])
           buffer.dirty = false
         }
 

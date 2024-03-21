@@ -2,7 +2,7 @@ import { vec3, vec4 } from 'gl-matrix'
 
 import { Atom } from '@tagl/core/atom'
 import { Frame } from '@tagl/core/data-structures/frame'
-import { Frustum, Object, Shape } from '@tagl/world'
+import { Frustum, Shape } from '@tagl/world'
 
 export class AABB {
   bounds = new Atom<{
@@ -34,22 +34,20 @@ export class AABB {
   })
   scratch = vec4.create()
   frame: Frame<Float32Array>
-  object: Shape
 
-  constructor(_object: Shape | Object, auto = true) {
-    this.object = _object instanceof Object ? _object.shape : _object
+  constructor(public shape: Shape, auto = true) {
     this.frame = new Frame<Float32Array>(null!)
-    if (auto) this.object.node.onUpdate(this.computeBounds.bind(this))
+    if (auto) this.shape.node.onUpdate(this.computeBounds.bind(this))
     this.computeBounds()
   }
 
   private computeBounds() {
-    this.frame.set(this.object.vertices.get())
-    const vertices = this.object.vertices.get()
+    this.frame.set(this.shape.vertices.get())
+    const vertices = this.shape.vertices.get()
     for (let i = 0; i < vertices.length / 3; i = i + 3) {
       this.frame.offset = i
 
-      const [x, y, z] = vec3.transformMat4(this.scratch, this.frame.cast(), this.object.node.worldMatrix.get()) as [
+      const [x, y, z] = vec3.transformMat4(this.scratch, this.frame.cast(), this.shape.node.worldMatrix.get()) as [
         number,
         number,
         number

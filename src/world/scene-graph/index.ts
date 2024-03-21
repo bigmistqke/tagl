@@ -1,14 +1,11 @@
 import { mat4 } from 'gl-matrix'
 import { TODO } from 'internal-utils'
 
-import { Program, uniform } from '@tagl/core'
+import { Atom, Program, uniform } from '@tagl/core'
 import { Token, Uniform } from '@tagl/core/tokens'
-import { Mat4 } from '@tagl/core/types'
 
 import { Scene } from '@tagl/world'
-import { Shape } from '@tagl/world/shapes'
 
-import { Atom } from '@tagl/core/atom'
 import { traverseChildren } from './utils/traverse-children'
 import { traverseParent } from './utils/traverse-parent'
 
@@ -17,7 +14,6 @@ import { traverseParent } from './utils/traverse-parent'
 /**********************************************************************************/
 
 export class Node3D {
-  localMatrix: Token<Mat4>
   /**
    * - `0` clean node
    * - `1` dirty offspring
@@ -34,13 +30,12 @@ export class Node3D {
   private _onUpdateHandlers: (() => void)[] = []
   private _program: Program | undefined
 
-  constructor(public shape: Shape) {
-    this.worldMatrix = uniform.mat4(mat4.clone(shape.matrix.get()))
+  constructor(public localMatrix: Token<mat4> | Atom<mat4>) {
+    this.worldMatrix = uniform.mat4(mat4.clone(localMatrix.get()))
     this.worldMatrix.onBind((program) => {
       this._program = program
     })
 
-    this.localMatrix = shape.matrix
     this.localMatrix.subscribe(() => {
       this._dirty()
       this.worldMatrix.__.requestRender()
@@ -61,6 +56,10 @@ export class Node3D {
   }
 
   bind(parent: Node3D | Origin3D) {
+    if (!parent) {
+      console.error('no parent', this)
+      return this
+    }
     parent.children.push(this)
     this.parent = parent
 
@@ -96,6 +95,8 @@ export class Node3D {
   }
 
   mount() {
+    this.origin = this.parent ? ('origin' in this.parent ? this.parent.origin : this.parent) : undefined
+
     this.origin?.addToUpdates(this)
     for (let i = 0; i < this._onMountHandlers.length; i++) {
       this._onMountHandlers[i]!(this.origin)
@@ -162,7 +163,7 @@ export class Node3D {
 
 export class Origin3D {
   children: Node3D[] = []
-  worldMatrix = new Atom(mat4.create())
+  worldMatrix = new Token(mat4.create())
 
   private _updates: Node3D[] = new Array(5000)
   private _updatesTotal: number = 0

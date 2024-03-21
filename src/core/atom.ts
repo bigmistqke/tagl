@@ -250,77 +250,16 @@ export class Atom<T> {
   }
 }
 
+export const atomize = <T>(value: T | Atom<T>) => {
+  if (value instanceof Atom) return value
+  else return new Atom(value)
+}
+
 /**********************************************************************************/
 /*                                                                                */
-/*                                  atom-wrapper                                  */
+/*                                     createAtom                                    */
 /*                                                                                */
 /**********************************************************************************/
-
-/**
- * Creates and returns a new atom object. An atom is a state management tool that allows you to store, update,
- * and subscribe to changes in a value. It also integrates with rendering mechanisms and custom notification logic.
- *
- * @param {T} value The initial value of the atom.
- * @returns {Atom<T>} The created atom object with methods for state management and subscriptions.
- *
- * @template T The type of the value stored in the atom.
- *
- * The returned atom object includes the following properties and methods:
- * - `get()` Returns the current value of the atom.
- * - `set(value | updater)` Updates the atom's value. If an updater function is provided, it receives the current value and a config object with methods to prevent notifications or rendering as arguments.
- * - `subscribe(callback)` Subscribes to changes in the atom's value. The callback is called with the new value whenever it changes. Returns a function to unsubscribe.
- * - `onBeforeDraw(callback)` Registers a callback to be called before the atom's associated renderables are drawn. Useful for performing actions or updates before rendering.
- * - `onBind(handler)` Registers a handler that is called when the atom is bound to a program. This can be used to perform setup actions for rendering or other initialization tasks.
- * - `__` An object with internal methods for binding the atom to rendering programs, requesting renders, and notifying subscribers of changes. This is primarily used internally and should not be directly interacted with in most cases.
- *
- * @example
- * Creating an atom and subscribing to its changes:
- * ```javascript
- * const countAtom = new Atom(0); // Initializes an atom with the value 0.
- *
- * const unsubscribe = countAtom.subscribe((newValue) => {
- *   console.log(`The new count is ${newValue}.`);
- * });
- *
- * // Increment the count. Logs "The new count is 1."
- * countAtom.set((currentValue) => currentValue + 1);
- *
- * // Stop listening to changes.
- * unsubscribe();
- * ```
- *
- *@example
- * Preventing unnecessary renders or notifications:
- * ```javascript
- * const configAtom = new Atom({ silent: false, render: true });
- *
- * configAtom.set((currentValue, config) => {
- *   if (currentValue.silent) {
- *     config.preventNotification();
- *   }
- *   if (!currentValue.render) {
- *     config.preventRender();
- *   }
- *   return { ...currentValue, silent: !currentValue.silent };
- * });
- * ```
- *
- * @example
- * Using `onBeforeDraw` for rendering actions:
- * ```javascript
- * const visualAtom = new Atom({ color: 'blue' });
- *
- * visualAtom.onBeforeDraw(() => {
- *   console.log(`Preparing to draw with the color ${visualAtom.get().color}.`);
- * });
- * // Assuming `visualAtom` is associated with a renderable object,
- * // this callback would run before the object is drawn.
- * ```
- *
- * Additionally, the atom integrates with rendering mechanisms through the onBind and onBeforeDraw methods, allowing for efficient updates and rendering control.
- */
-
-// export const atom = <T>(value: T) => new Atom(value)
 
 /**********************************************************************************/
 /*                                     EFFECT                                     */

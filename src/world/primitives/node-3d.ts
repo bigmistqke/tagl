@@ -4,14 +4,9 @@ import { TODO } from 'internal-utils'
 import { Atom, Program, uniform } from '@tagl/core'
 import { Token, Uniform } from '@tagl/core/tokens'
 
-import { Scene } from '@tagl/world'
-
-import { traverseChildren } from './utils/traverse-children'
-import { traverseParent } from './utils/traverse-parent'
-
-/**********************************************************************************/
-/*                                    NODE3D                                      */
-/**********************************************************************************/
+import { traverseChildren } from '@tagl/world/utils/traverse-children'
+import { traverseParent } from '../utils/traverse-parent'
+import { Scene } from './'
 
 export class Node3D {
   /**
@@ -21,16 +16,16 @@ export class Node3D {
    */
   flag: 0 | 1 | 2 = 0
   worldMatrix: Uniform<mat4>
-  children: Node3D[] = []
-  parent: Node3D | Origin3D | undefined = undefined
-  origin: Origin3D | undefined
+  children = new Atom<Node3D[]>([])
+  parent: Node3D | Scene | undefined = undefined
+  origin: Scene | undefined
 
-  private _onMountHandlers: ((origin: Origin3D | undefined) => void)[] = []
-  private _onCleanupHandlers: ((origin: Origin3D | undefined) => void)[] = []
+  private _onMountHandlers: ((origin: Scene | undefined) => void)[] = []
+  private _onCleanupHandlers: ((origin: Scene | undefined) => void)[] = []
   private _onUpdateHandlers: (() => void)[] = []
   private _program: Program | undefined
 
-  constructor(public localMatrix: Token<mat4> | Atom<mat4>) {
+  constructor(public localMatrix: Token<mat4> | Atom<mat4> = new Atom(mat4.create())) {
     this.worldMatrix = uniform.mat4(mat4.clone(localMatrix.get()))
     this.worldMatrix.onBind((program) => {
       this._program = program
@@ -42,11 +37,11 @@ export class Node3D {
     })
   }
 
-  onMount(callback: (origin: Origin3D | undefined) => void) {
+  onMount(callback: (origin: Scene | undefined) => void) {
     this._onMountHandlers.push(callback)
     return TODO('cleanup onMount')
   }
-  onCleanup(callback: (origin: Origin3D | undefined) => void) {
+  onCleanup(callback: (origin: Scene | undefined) => void) {
     this._onCleanupHandlers.push(callback)
     return TODO('cleanup onCleanup')
   }
@@ -55,19 +50,23 @@ export class Node3D {
     return TODO('cleanup onUpdate')
   }
 
-  bind(parent: Node3D | Origin3D) {
+  bind(parent: Node3D | Scene) {
     if (!parent) {
       console.error('no parent', this)
       return this
     }
-    parent.children.push(this)
+
+    parent.children.set((children) => {
+      children.push(this)
+      return children
+    })
     this.parent = parent
 
     this.origin = 'origin' in parent ? parent.origin : parent
 
     this.mount()
 
-    if (this.origin instanceof Origin3D) {
+    if (this.origin instanceof Scene) {
       traverseChildren(this, (node) => {
         node.origin = this.origin
         node.mount()
@@ -80,15 +79,16 @@ export class Node3D {
     return this
   }
   unbind() {
-    traverseChildren(this, (node) => {
-      node.origin = undefined
-      node.cleanup()
-    })
+    traverseChildren(this, (node) => node.cleanup())
+
     this.cleanup()
 
     if (this.parent) {
-      const index = this.parent.children.findIndex((child) => child === this)
-      if (index !== -1) this.parent.children.splice(index, 1)
+      this.parent.children.set((children) => {
+        const index = children.findIndex((child) => child === this)
+        if (index !== -1) children.splice(index, 1)
+        return children
+      })
     }
 
     this.parent = undefined
@@ -96,7 +96,6 @@ export class Node3D {
 
   mount() {
     this.origin = this.parent ? ('origin' in this.parent ? this.parent.origin : this.parent) : undefined
-
     this.origin?.addToUpdates(this)
     for (let i = 0; i < this._onMountHandlers.length; i++) {
       this._onMountHandlers[i]!(this.origin)
@@ -107,14 +106,15 @@ export class Node3D {
     for (let i = 0; i < this._onCleanupHandlers.length; i++) {
       this._onCleanupHandlers[i]!(this.origin)
     }
+    this.origin = undefined
   }
 
-  update() {
+  updateWorldMatrix() {
     try {
       if (this.flag === 2) {
         this.worldMatrix.set((matrix, flags) => {
           flags.preventRender()
-          //flags.preventNotification()
+          // flags.preventNotification()
 
           mat4.multiply(matrix, this.parent!.worldMatrix.get(), this.localMatrix.get())
 
@@ -138,7 +138,7 @@ export class Node3D {
     traverseChildren(this, (node, stop) => {
       if (node.flag === 0) {
         node.flag = 2
-        this.origin?.addToUpdates(node)
+        this.origin?.addToUpdates(node.bind(node))
       } else stop()
     })
 
@@ -146,7 +146,7 @@ export class Node3D {
       if (node instanceof Node3D) {
         if (node.flag === 0) {
           node.flag = 1
-          this.origin?.addToUpdates(node)
+          this.origin?.addToUpdates(node.bind(node))
         } else {
           stop()
         }
@@ -154,31 +154,5 @@ export class Node3D {
     })
 
     this._program?.gl.requestRender()
-  }
-}
-
-/**********************************************************************************/
-/*                                    ORIGIN3D                                    */
-/**********************************************************************************/
-
-export class Origin3D {
-  children: Node3D[] = []
-  worldMatrix = new Token(mat4.create())
-
-  private _updates: Node3D[] = new Array(5000)
-  private _updatesTotal: number = 0
-
-  constructor(public scene: Scene) {}
-  update(): void {
-    for (let i = 0; i < this._updatesTotal; i++) {
-      this._updates[i]!.update()
-    }
-    this._updatesTotal = 0
-  }
-
-  addToUpdates(node: Node3D) {
-    this.scene.requestRender()
-    this._updates[this._updatesTotal] = node
-    this._updatesTotal++
   }
 }

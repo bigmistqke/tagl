@@ -1,4 +1,4 @@
-import { Shape, ShapeOptions } from './shape'
+import { Shape, ShapeOptions } from '../primitives/shape'
 
 // prettier-ignore
 const _cube = {

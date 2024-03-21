@@ -1,4 +1,4 @@
-import { Node3D, Origin3D } from '../..'
+import { Node3D, Scene } from '@tagl/world'
 
 let shouldStop = false
 const stop = () => {
@@ -13,10 +13,10 @@ const preventBranch = () => {
 const children: Node3D[] = []
 
 export const traverseChildren = (
-  node: Node3D | Origin3D,
+  node: Node3D | Scene,
   callback: (object3D: Node3D, stop: () => void, preventBranch: () => void) => void
 ) => {
-  Array.prototype.push.apply(children, node.children)
+  Array.prototype.push.apply(children, node.children.get())
 
   shouldStop = false
 
@@ -26,7 +26,7 @@ export const traverseChildren = (
     callback(child, stop, preventBranch)
     if (shouldStop) break
     if (!shouldPreventBranch) {
-      Array.prototype.push.apply(children, child.children)
+      Array.prototype.push.apply(children, child.children.get())
     }
   }
 

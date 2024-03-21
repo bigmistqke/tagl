@@ -1,12 +1,23 @@
-import { mat4, vec3 } from 'gl-matrix'
+import { vec3 } from 'gl-matrix'
 
-import { Program, ShaderToken, attribute, glsl, isShader, uniform } from '@tagl/core'
-import { Atom, atomize } from '@tagl/core/atom'
-import { Attribute, Buffer, Uniform, buffer } from '@tagl/core/tokens'
-import { Token } from '@tagl/core/tokens/token'
+import {
+  Atom,
+  Attribute,
+  Buffer,
+  Program,
+  ShaderToken,
+  Token,
+  Uniform,
+  atomize,
+  attribute,
+  buffer,
+  glsl,
+  isShader,
+  uniform,
+} from '@tagl/core'
 import { Mat4, RenderMode, Vec3 } from '@tagl/core/types'
 import { Scene } from '@tagl/world'
-import { Node3D, Origin3D } from '@tagl/world/scene-graph'
+import { Node3D } from '@tagl/world/primitives/node-3d'
 
 type ShapeOptionsShader =
   | ShaderToken
@@ -39,26 +50,26 @@ type ShapeOptionsIndices = ShapeOptionsBase & {
 }
 export type ShapeOptions = ShapeOptionsCount | ShapeOptionsIndices
 
-export class Shape {
+export class Shape extends Node3D {
   cache = new Map<Scene, Program>()
 
-  /** local matrix */
-  matrix: Token<mat4>
   mode: Atom<RenderMode>
   color: Uniform<vec3>
   vertices: Attribute<Float32Array>
   uv: Attribute<Float32Array>
   count: Atom<number> | undefined
   indices: Buffer<Uint16Array> | undefined
-  node: Node3D
   program: any
 
   constructor(private shapeOptions: ShapeOptions) {
+    const matrix = shapeOptions.matrix instanceof Token ? shapeOptions.matrix : uniform.mat4(shapeOptions.matrix)
+
+    super(matrix)
+
     this.color = uniform.vec3(shapeOptions.color)
     this.vertices =
       shapeOptions.vertices instanceof Token ? shapeOptions.vertices : attribute.vec3(shapeOptions.vertices)
     this.uv = shapeOptions.uv instanceof Token ? shapeOptions.uv : attribute.vec2(shapeOptions.uv)
-    this.matrix = shapeOptions.matrix instanceof Token ? shapeOptions.matrix : uniform.mat4(shapeOptions.matrix)
 
     this.mode = atomize(shapeOptions.mode || 'TRIANGLES')
     this.count = shapeOptions.count !== undefined ? atomize(shapeOptions.count) : undefined
@@ -73,23 +84,12 @@ export class Shape {
             })
         : undefined
 
-    this.node = new Node3D(this.matrix)
-    this.node.onMount(this._mount.bind(this))
-    this.node.onCleanup(this._cleanup.bind(this))
+    this.onMount(this._mount.bind(this))
+    this.onCleanup(this._cleanup.bind(this))
   }
 
-  bind(parent: Shape | Scene) {
-    this.node.bind(parent instanceof Scene ? parent.node : parent.node)
-    return this
-  }
-  unbind() {
-    return this.node.unbind
-  }
-
-  private _mount(origin: Origin3D | undefined) {
-    if (!origin) return
-
-    const scene = origin.scene
+  private _mount(scene: Scene | undefined) {
+    if (!scene) return
 
     const cached = this.program
     if (cached) {
@@ -109,13 +109,13 @@ export class Shape {
           perspective: scene.perspective,
           color: this.color,
           vertices: this.vertices,
-          matrix: this.node.worldMatrix,
+          matrix: this.worldMatrix,
           uv: this.uv,
         })
       : glsl`#version 300 es
         precision highp float;
         void main(void) {
-          gl_Position = ${scene.perspective} * ${scene.camera} * ${this.node.worldMatrix} * vec4(${this.vertices} * 0.1, 1);
+          gl_Position = ${scene.perspective} * ${scene.camera} * ${this.worldMatrix} * vec4(${this.vertices} * 0.1, 1);
           gl_PointSize = 5.;
         }`
 
@@ -127,7 +127,7 @@ export class Shape {
           perspective: scene.perspective,
           color: this.color,
           vertices: this.vertices,
-          matrix: this.node.worldMatrix,
+          matrix: this.worldMatrix,
           uv: this.uv,
         })
       : glsl`#version 300 es
@@ -149,12 +149,8 @@ export class Shape {
     })
   }
 
-  private _cleanup(origin: Origin3D | undefined) {
-    if (!origin) return
-
-    const scene = origin.scene
-
-    scene.stack.set((stack, flags) => {
+  private _cleanup() {
+    this.origin?.stack.set((stack, flags) => {
       const index = stack.findIndex((program) => program === this.program)
       if (index !== -1) {
         stack.splice(index, 1)

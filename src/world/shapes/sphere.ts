@@ -1,6 +1,6 @@
 import { Atom, atomize, effect } from '@tagl/core/atom'
 
-import { Shape, ShapeOptions } from './shape'
+import { Shape, ShapeOptions } from '../primitives/shape'
 
 export class Sphere extends Shape {
   radius: Atom<number>

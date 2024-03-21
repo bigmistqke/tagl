@@ -1,4 +1,4 @@
-import { Node3D, Origin3D } from '..'
+import { Node3D, Scene } from '@tagl/world'
 
 let shouldStop = false
 const stop = () => {
@@ -6,13 +6,13 @@ const stop = () => {
 }
 
 export const traverseParent = (
-  root: Node3D | Origin3D,
-  callback?: (object3D: Node3D | Origin3D, stop: () => void) => false | void
+  root: Node3D | Scene,
+  callback?: (object3D: Node3D | Scene, stop: () => void) => false | void
 ) => {
-  let currentNode: Node3D | Origin3D | undefined = root
+  let currentNode: Node3D | Scene | undefined = root
   shouldStop = false
 
-  while (!shouldStop && currentNode && !(currentNode instanceof Origin3D)) {
+  while (!shouldStop && currentNode && !(currentNode instanceof Scene)) {
     if (callback?.(currentNode, stop) === false) {
       return
     }

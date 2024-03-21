@@ -1,24 +1,41 @@
 import { mat4, vec3, vec4 } from 'gl-matrix'
 
-import { GL, Pipeline, uniform } from '@tagl/core'
+import { Atom, GL, Pipeline, Token, uniform } from '@tagl/core'
 import { Uniform } from '@tagl/core/tokens'
-import { Origin3D } from '@tagl/world/scene-graph'
+import { Node3D } from '@tagl/world/primitives/node-3d'
 
 export class Scene extends GL {
   camera = uniform.mat4(mat4.create())
-  node = new Origin3D(this)
   perspective: Uniform<mat4>
   pipeline = new Pipeline(this)
+
+  children = new Atom<Node3D[]>([])
+  localMatrix = new Token(mat4.create())
+  worldMatrix = new Token(mat4.create())
+
+  private nodesToUpdate: Node3D[] = new Array()
 
   constructor(public canvas: HTMLCanvasElement) {
     super(canvas)
     this.perspective = uniform.mat4(this._perspective())
     this.onResize(() => this.perspective.set(this._perspective))
-    this.pipeline.add(this.node.update.bind(this.node)).add(super.render.bind(this))
+    this.pipeline.add(this.update.bind(this)).add(super.render.bind(this))
+  }
+
+  addToUpdates(node: Node3D) {
+    this.nodesToUpdate.push(node)
+    // this.requestRender()
   }
 
   render() {
     this.pipeline.run()
+  }
+
+  update(): void {
+    for (let i = 0; i < this.nodesToUpdate.length; i++) {
+      this.nodesToUpdate[i]!.updateWorldMatrix()
+    }
+    this.nodesToUpdate.length = 0
   }
 
   private _perspective = (matrix?: mat4) =>

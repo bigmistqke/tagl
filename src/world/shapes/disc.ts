@@ -3,7 +3,7 @@ import { vec3 } from 'gl-matrix'
 import { effect } from '@tagl/core'
 import { Atom } from '@tagl/core/atom'
 
-import { Shape, ShapeOptions } from './shape'
+import { Shape, ShapeOptions } from '../primitives/shape'
 
 const cache = {
   vertices: [] as Float32Array[],
@@ -30,10 +30,10 @@ export class Disc extends Shape {
     })
     this.radius = new Atom(options.radius)
     this.segments = new Atom(options.segments)
-    effect(this.update.bind(this), [this.radius, this.segments])
+    effect(this.updateWorldMatrix.bind(this), [this.radius, this.segments])
   }
 
-  update() {
+  updateWorldMatrix() {
     const size = this.segments.get() + 1
 
     this.vertices.set(() => {

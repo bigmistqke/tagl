@@ -2,7 +2,7 @@ import { mat4 } from 'gl-matrix'
 import { TODO } from 'internal-utils'
 
 import { Program, uniform } from '@tagl/core'
-import { Token } from '@tagl/core/tokens'
+import { Token, Uniform } from '@tagl/core/tokens'
 import { Mat4 } from '@tagl/core/types'
 
 import { Scene } from '@tagl/world'
@@ -24,7 +24,7 @@ export class Node3D {
    * - `2` dirty node
    */
   flag: 0 | 1 | 2 = 0
-  worldMatrix: Token<mat4>
+  worldMatrix: Uniform<mat4>
   children: Node3D[] = []
   parent: Node3D | Origin3D | undefined = undefined
   origin: Origin3D | undefined
@@ -35,7 +35,7 @@ export class Node3D {
   private _program: Program | undefined
 
   constructor(public shape: Shape) {
-    this.worldMatrix = uniform.mat4(mat4.clone(shape.matrix.get()), { id: 'hallo' })
+    this.worldMatrix = uniform.mat4(mat4.clone(shape.matrix.get()))
     this.worldMatrix.onBind((program) => {
       this._program = program
     })

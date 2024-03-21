@@ -1,4 +1,5 @@
 import { mat2, mat3, mat4, vec2, vec3, vec4 } from 'gl-matrix'
+import { Atom } from './atom'
 import { Registry } from './data-structures/registry'
 import { BufferRegistry, TextureRegistry } from './virtualization/registries'
 import { type TextureSlots } from './virtualization/texture-slots'
@@ -26,6 +27,8 @@ export type Mat4 = mat4
 export type Vec2 = vec2
 export type Vec3 = vec3
 export type Vec4 = vec4
+
+export type WrapWithAtom<T> = T extends any ? Atom<T> : never
 
 /**********************************************************************************/
 /*                                       TOKENS                                   */

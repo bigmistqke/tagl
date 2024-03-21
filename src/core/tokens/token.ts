@@ -1,4 +1,4 @@
-import { Atom } from '../atom'
+import { Atom, atomize } from '../atom'
 import { Program } from '../gl'
 import { Accessor, Setter } from '../types'
 
@@ -10,7 +10,7 @@ export class Token<T = any> {
   onBind: (handler: (program: Program) => void) => () => void
   atom: Atom<T>
   constructor(value: T | Atom<T>) {
-    this.atom = value instanceof Atom ? value : new Atom<any>(value)
+    this.atom = atomize(value)
     this.get = this.atom.get.bind(this.atom)
     this.set = this.atom.set.bind(this.atom)
     this.subscribe = this.atom.subscribe.bind(this.atom)

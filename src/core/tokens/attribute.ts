@@ -1,6 +1,5 @@
 import { Program } from '..'
-import { Atom } from '../atom'
-import { BufferOptions, TypedArray, ValueOf } from '../types'
+import { BufferOptions, TypedArray, ValueOf, WrapWithAtom } from '../types'
 import { dataTypeToSize } from '../utils'
 import { Token } from './token'
 
@@ -17,19 +16,21 @@ export type AttributeOptions = BufferOptions & {
   instanceCount?: number
 }
 
+type AttributeFactory = <T extends TypedArray>(value: T | WrapWithAtom<T>, options?: AttributeOptions) => Attribute<T>
+
 // prettier-ignore
 export type Attributes = {
-  float: <T extends TypedArray>(value: T | Atom<T>, options?: AttributeOptions) => Attribute<T>
-  int:   <T extends TypedArray>(value: T | Atom<T>, options?: AttributeOptions) => Attribute<T>
-  vec2:  <T extends TypedArray>(value: T | Atom<T>, options?: AttributeOptions) => Attribute<T>
-  vec3:  <T extends TypedArray>(value: T | Atom<T>, options?: AttributeOptions) => Attribute<T>
-  vec4:  <T extends TypedArray>(value: T | Atom<T>, options?: AttributeOptions) => Attribute<T>
-  ivec2: <T extends TypedArray>(value: T | Atom<T>, options?: AttributeOptions) => Attribute<T>
-  ivec3: <T extends TypedArray>(value: T | Atom<T>, options?: AttributeOptions) => Attribute<T>
-  ivec4: <T extends TypedArray>(value: T | Atom<T>, options?: AttributeOptions) => Attribute<T>
-  mat2:  <T extends TypedArray>(value: T | Atom<T>, options?: AttributeOptions) => Attribute<T>
-  mat3:  <T extends TypedArray>(value: T | Atom<T>, options?: AttributeOptions) => Attribute<T>
-  mat4:  <T extends TypedArray>(value: T | Atom<T>, options?: AttributeOptions) => Attribute<T>
+  float: AttributeFactory
+  int:   AttributeFactory
+  vec2:  AttributeFactory
+  vec3:  AttributeFactory
+  vec4:  AttributeFactory
+  ivec2: AttributeFactory
+  ivec3: AttributeFactory
+  ivec4: AttributeFactory
+  mat2:  AttributeFactory
+  mat3:  AttributeFactory
+  mat4:  AttributeFactory
 }
 
 export type AttributeParameters = Parameters<Attributes[keyof Attributes]>

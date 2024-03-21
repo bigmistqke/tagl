@@ -1,11 +1,11 @@
-import { Atom } from './atom'
+import { Atom, atomize } from './atom'
 import { DequeMap } from './data-structures/deque-map'
 import { glsl, type ShaderToken } from './glsl'
 import { Buffer, buffer } from './tokens'
 import { Token } from './tokens/token'
 import { GLLocation, RenderMode } from './types'
-import { glRegistry, ProgramRegistry, type ProgramRecord } from './virtualization/registries'
-import { getVirtualProgram, VirtualProgram } from './virtualization/virtual-program'
+import { ProgramRegistry, glRegistry, type ProgramRecord } from './virtualization/registries'
+import { VirtualProgram, getVirtualProgram } from './virtualization/virtual-program'
 
 /**
  * Represents a WebGL2 rendering and management system.
@@ -57,12 +57,11 @@ export class GL {
    */
   requestRender() {
     if (this.isPending) {
-      this._scheduledRender = true
       return
     }
     this.isPending = true
     if (this.looping || this.batching) return
-    requestIdleCallback(this._render.bind(this))
+    requestIdleCallback(this.render.bind(this))
   }
 
   batch(callback: () => void) {
@@ -72,7 +71,7 @@ export class GL {
     } finally {
       this.batching = false
       if (this.isPending) {
-        requestAnimationFrame(this._render.bind(this))
+        requestAnimationFrame(this.render.bind(this))
       }
     }
   }
@@ -153,19 +152,17 @@ export class GL {
         node(now)
       }
     }
-    if (this.isPending) this._render(now)
+    if (this.isPending) this.render(now)
   }
 
   /**
    * Performs the actual rendering logic. Called directly or scheduled by `requestRender`.
-   * @private
-   * @async
    */
-  private _render(now: number) {
+  render() {
     this.isPending = false
 
     for (let i = 0; i < this._onBeforeRenderCallbacks.length; i++) {
-      this._onBeforeRenderCallbacks[i]!(now)
+      this._onBeforeRenderCallbacks[i]!()
     }
 
     const stack = this.stack.get()
@@ -222,7 +219,7 @@ export class Program {
     this.gl = options.gl
     this.vertex = options.vertex
     this.fragment = options.fragment
-    this.mode = options.mode instanceof Atom ? options.mode : new Atom(options.mode || 'TRIANGLES')
+    this.mode = atomize(options.mode || 'TRIANGLES')
 
     this._options = options
     this._glRecord = glRegistry.register(options.gl.ctx)

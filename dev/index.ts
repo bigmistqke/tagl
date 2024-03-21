@@ -1,37 +1,41 @@
-import { Scene } from '@tagl/world'
-import { Character } from '@tagl/world/text'
-import { mat4 } from 'gl-matrix'
-import opentype from 'opentype.js'
+import { Atom } from '@tagl/core'
+import { Scene, Sphere, getRayFromCamera } from '@tagl/world'
+import { BoundingSphere } from '@tagl/world/bounds'
+import { orbit } from '@tagl/world/controls'
+import { mat4, vec3 } from 'gl-matrix'
 
 const canvas = document.createElement('canvas')
 document.body.appendChild(canvas)
 
 const scene = new Scene(canvas)
 scene.autosize()
-scene.camera.set((camera) => {
-  mat4.translate(camera, camera, [0, 0, -5])
-  mat4.rotate(camera, camera, Math.PI, [0, 1, 0])
-  return camera
+scene.perspective.set((matrix) => mat4.perspective(matrix, 190, scene.canvas.width / scene.canvas.height, 0.1, 1000))
+scene.camera.set((camera) => mat4.translate(camera, camera, [0, 0, -2]))
+
+const hit = new Atom(false)
+hit.subscribe((hit) => {
+  if (hit) {
+    sphere.shape.color.set([1, 0, 0])
+  } else {
+    sphere.shape.color.set([0, 1, 0])
+  }
 })
 
-const font = opentype.load('./GeistMono-Regular.otf')
+const sphere = new Sphere({
+  color: vec3.fromValues(0, 1, 0),
+  matrix: mat4.create(),
+  radius: 0.5,
+  segments: 6,
+  rings: 6,
+  // mode: 'POINTS',
+})
 
-const matrix = mat4.create()
-mat4.rotate(matrix, matrix, Math.PI, [0, 0, 1])
-mat4.translate(matrix, matrix, [-2, 2, 0])
+sphere.bind(scene)
+const bounds = new BoundingSphere(vec3.create(), 0.5)
 
-font.then((font) => {
-  const character = new Character({
-    font,
-    value: 'a',
-    matrix,
-    color: [0, 1, 0],
-  })
+orbit(scene, { near: 0.1, initialRadius: 0.2 })
 
-  character.bind(scene)
-
-  setTimeout(() => {
-    character.matrix.set((matrix) => mat4.translate(matrix, matrix, [5, 0, 0]))
-    character.value.set('b')
-  }, 1000)
+canvas.addEventListener('mousemove', (e) => {
+  const ray = getRayFromCamera(e, canvas, scene)
+  hit.set(bounds.rayIntersects(ray))
 })

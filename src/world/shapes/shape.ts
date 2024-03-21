@@ -1,7 +1,7 @@
 import { mat4, vec3 } from 'gl-matrix'
 
 import { Program, ShaderToken, attribute, glsl, isShader, uniform } from '@tagl/core'
-import { Atom } from '@tagl/core/atom'
+import { Atom, atomize } from '@tagl/core/atom'
 import { Attribute, Buffer, Uniform, buffer } from '@tagl/core/tokens'
 import { Token } from '@tagl/core/tokens/token'
 import { Mat4, RenderMode, Vec3 } from '@tagl/core/types'
@@ -59,10 +59,8 @@ export class Shape {
     this.uv = options.uv instanceof Token ? options.uv : attribute.vec2(options.uv)
     this.matrix = options.matrix instanceof Token ? options.matrix : uniform.mat4(options.matrix)
 
-    this.mode = options.mode instanceof Atom ? options.mode : new Atom(options.mode || 'TRIANGLES')
-
-    this.count =
-      options.count instanceof Atom ? options.count : options.count !== undefined ? new Atom(options.count) : undefined
+    this.mode = atomize(options.mode || 'TRIANGLES')
+    this.count = options.count !== undefined ? atomize(options.count) : undefined
 
     this.indices =
       options.indices !== undefined
@@ -80,7 +78,7 @@ export class Shape {
   }
 
   bind(parent: Shape | Scene) {
-    this.node.bind(parent.node)
+    this.node.bind(parent.origin)
     return this
   }
   unbind() {

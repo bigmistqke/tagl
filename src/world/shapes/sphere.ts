@@ -1,4 +1,4 @@
-import { Atom, effect } from '@tagl/core/atom'
+import { Atom, atomize, effect } from '@tagl/core/atom'
 
 import { Object } from './object'
 import { Shape, ShapeOptions } from './shape'
@@ -10,9 +10,9 @@ export class Sphere<TData extends Record<string, any>> extends Object<TData> {
 
   constructor(
     options: Omit<ShapeOptions, 'vertices' | 'indices' | 'uv'> & {
-      radius: number
-      segments: number
-      rings: number
+      radius: number | Atom<number>
+      segments: number | Atom<number>
+      rings: number | Atom<number>
     }
   ) {
     const vertices = new Atom(new Float32Array())
@@ -30,9 +30,9 @@ export class Sphere<TData extends Record<string, any>> extends Object<TData> {
 
     super(shape)
 
-    this.radius = new Atom(options.radius)
-    this.segments = new Atom(options.segments)
-    this.rings = new Atom(options.rings)
+    this.radius = atomize(options.radius)
+    this.segments = atomize(options.segments)
+    this.rings = atomize(options.rings)
 
     effect(this.update.bind(this), [this.radius, this.segments])
   }

@@ -53,32 +53,33 @@ export class Shape {
   node: Node3D
   program: any
 
-  constructor(private options: ShapeOptions) {
-    this.color = uniform.vec3(options.color)
-    this.vertices = options.vertices instanceof Token ? options.vertices : attribute.vec3(options.vertices)
-    this.uv = options.uv instanceof Token ? options.uv : attribute.vec2(options.uv)
-    this.matrix = options.matrix instanceof Token ? options.matrix : uniform.mat4(options.matrix)
+  constructor(private shapeOptions: ShapeOptions) {
+    this.color = uniform.vec3(shapeOptions.color)
+    this.vertices =
+      shapeOptions.vertices instanceof Token ? shapeOptions.vertices : attribute.vec3(shapeOptions.vertices)
+    this.uv = shapeOptions.uv instanceof Token ? shapeOptions.uv : attribute.vec2(shapeOptions.uv)
+    this.matrix = shapeOptions.matrix instanceof Token ? shapeOptions.matrix : uniform.mat4(shapeOptions.matrix)
 
-    this.mode = atomize(options.mode || 'TRIANGLES')
-    this.count = options.count !== undefined ? atomize(options.count) : undefined
+    this.mode = atomize(shapeOptions.mode || 'TRIANGLES')
+    this.count = shapeOptions.count !== undefined ? atomize(shapeOptions.count) : undefined
 
     this.indices =
-      options.indices !== undefined
-        ? options.indices instanceof Token
-          ? options.indices
-          : buffer(options.indices, {
+      shapeOptions.indices !== undefined
+        ? shapeOptions.indices instanceof Token
+          ? shapeOptions.indices
+          : buffer(shapeOptions.indices, {
               target: 'ELEMENT_ARRAY_BUFFER',
               usage: 'STATIC_DRAW',
             })
         : undefined
 
-    this.node = new Node3D(this)
+    this.node = new Node3D(this.matrix)
     this.node.onMount(this._mount.bind(this))
     this.node.onCleanup(this._cleanup.bind(this))
   }
 
   bind(parent: Shape | Scene) {
-    this.node.bind(parent.origin)
+    this.node.bind(parent instanceof Scene ? parent.node : parent.node)
     return this
   }
   unbind() {
@@ -100,10 +101,10 @@ export class Shape {
       return
     }
 
-    const vertex = isShader(this.options.vertex)
-      ? this.options.vertex
-      : typeof this.options.vertex === 'function'
-      ? this.options.vertex({
+    const vertex = isShader(this.shapeOptions.vertex)
+      ? this.shapeOptions.vertex
+      : typeof this.shapeOptions.vertex === 'function'
+      ? this.shapeOptions.vertex({
           camera: scene.camera,
           perspective: scene.perspective,
           color: this.color,
@@ -118,10 +119,10 @@ export class Shape {
           gl_PointSize = 5.;
         }`
 
-    const fragment = isShader(this.options.fragment)
-      ? this.options.fragment
-      : typeof this.options.fragment === 'function'
-      ? this.options.fragment({
+    const fragment = isShader(this.shapeOptions.fragment)
+      ? this.shapeOptions.fragment
+      : typeof this.shapeOptions.fragment === 'function'
+      ? this.shapeOptions.fragment({
           camera: scene.camera,
           perspective: scene.perspective,
           color: this.color,
@@ -138,7 +139,7 @@ export class Shape {
 
     const programOptions = this.indices
       ? { mode: this.mode, vertex, fragment, indices: this.indices }
-      : { mode: this.mode, vertex, fragment, count: this.options.count! }
+      : { mode: this.mode, vertex, fragment, count: this.shapeOptions.count! }
 
     const program = (this.program = scene.createProgram(programOptions))
 

@@ -1,7 +1,8 @@
 import earcut from 'earcut'
 import opentype from 'opentype.js'
+import { atom } from '../../core'
 import { Atom } from '../../core/atom'
-import { Object, Shape, ShapeOptions } from '../index'
+import { Shape, ShapeOptions } from '../index'
 import { vector2ArrayToVector3Array } from '../internal-utils'
 import { commandsToEarcutFormats } from './utils'
 
@@ -37,27 +38,25 @@ export type CharacterOptions = Omit<ShapeOptions, 'vertices' | 'uv' | 'indices'>
   flattness?: number
 }
 
-export class Character extends Object {
+export class Character extends Shape {
   value: Atom<string>
 
   constructor(private options: CharacterOptions) {
-    const value = new Atom(options.value)
+    const value = atom(options.value)
 
-    const shape = new Shape({
+    super({
       ...characterToData(options.font, value.get(), options.flattness || 1),
       color: new Float32Array([0, 0, 0]),
       matrix: options.matrix,
     })
 
-    super(shape)
-
     this.value = value
 
     const updateShape = () => {
       const data = this.characterToData()
-      this.shape.vertices.set(data.vertices)
-      this.shape.uv.set(data.uv)
-      this.shape.indices?.set(data.indices)
+      this.vertices.set(data.vertices)
+      this.uv.set(data.uv)
+      this.indices?.set(data.indices)
     }
 
     this.value.subscribe(updateShape)

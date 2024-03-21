@@ -3,7 +3,6 @@ import { vec3 } from 'gl-matrix'
 import { effect } from '@tagl/core'
 import { Atom } from '@tagl/core/atom'
 
-import { Object } from './object'
 import { Shape, ShapeOptions } from './shape'
 
 const cache = {
@@ -11,7 +10,7 @@ const cache = {
   indices: [] as Uint16Array[],
 }
 
-export class Disc<TData extends Record<string, any>> extends Object<TData> {
+export class Disc extends Shape {
   radius: Atom<number>
   segments: Atom<number>
 
@@ -21,7 +20,7 @@ export class Disc<TData extends Record<string, any>> extends Object<TData> {
       segments: number
     }
   ) {
-    const shape = new Shape<TData>({
+    super({
       vertices: new Atom(new Float32Array()),
       uv: new Atom(new Float32Array()),
       indices: new Atom(new Uint16Array()),
@@ -29,9 +28,6 @@ export class Disc<TData extends Record<string, any>> extends Object<TData> {
       color: options.color,
       mode: options.mode,
     })
-
-    super(shape)
-
     this.radius = new Atom(options.radius)
     this.segments = new Atom(options.segments)
     effect(this.update.bind(this), [this.radius, this.segments])

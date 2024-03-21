@@ -1,9 +1,8 @@
 import { Atom, atomize, effect } from '@tagl/core/atom'
 
-import { Object } from './object'
 import { Shape, ShapeOptions } from './shape'
 
-export class Sphere<TData extends Record<string, any>> extends Object<TData> {
+export class Sphere extends Shape {
   radius: Atom<number>
   segments: Atom<number>
   rings: Atom<number>
@@ -19,7 +18,7 @@ export class Sphere<TData extends Record<string, any>> extends Object<TData> {
     const uv = new Atom(new Float32Array())
     const indices = new Atom(new Uint16Array())
 
-    const shape = new Shape<TData>({
+    super({
       vertices,
       uv,
       indices,
@@ -27,8 +26,6 @@ export class Sphere<TData extends Record<string, any>> extends Object<TData> {
       color: options.color,
       mode: options.mode,
     })
-
-    super(shape)
 
     this.radius = atomize(options.radius)
     this.segments = atomize(options.segments)

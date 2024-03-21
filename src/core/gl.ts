@@ -161,6 +161,11 @@ export class GL {
   render() {
     this.isPending = false
 
+    this.ctx.enable(this.ctx.DEPTH_TEST)
+    this.ctx.depthFunc(this.ctx.LEQUAL)
+    this.ctx.depthRange(0.2, 10)
+    this.ctx.clearDepth(1.0)
+
     for (let i = 0; i < this._onBeforeRenderCallbacks.length; i++) {
       this._onBeforeRenderCallbacks[i]!()
     }

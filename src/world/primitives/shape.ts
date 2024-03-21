@@ -3,7 +3,6 @@ import { vec3 } from 'gl-matrix'
 import {
   Atom,
   Attribute,
-  Buffer,
   Program,
   ShaderToken,
   Token,

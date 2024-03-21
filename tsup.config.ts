@@ -22,5 +22,6 @@ export const tsup: Options = {
     'src/world/text/index.ts', 
     'src/world/controls/index.ts',
     'src/world/bounds/index.ts',
+    'src/world/h/index.ts',
   ],
 }

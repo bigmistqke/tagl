@@ -31,7 +31,7 @@ export class Sphere extends Shape {
     this.segments = atomize(options.segments)
     this.rings = atomize(options.rings)
 
-    effect(this.update.bind(this), [this.radius, this.segments])
+    effect([this.radius, this.segments], this.update.bind(this))
   }
 
   update() {

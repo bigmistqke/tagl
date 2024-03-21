@@ -7,9 +7,9 @@ export class Frustum {
   planes: vec4[] = null!
 
   constructor(scene: Scene) {
-    effect(() => {
+    effect([scene.camera, scene.perspective], () => {
       this.planes = this.computeFrustumPlanes(scene.camera.get(), scene.perspective.get())
-    }, [scene.camera, scene.perspective])
+    })
   }
 
   private computeFrustumPlanes(cameraMatrix: mat4, perspectiveMatrix: mat4): vec4[] {

@@ -77,7 +77,7 @@ export const orbit = (
   }
   window.addEventListener('wheel', onWheel, { passive: false })
 
-  effect(() => {
+  effect([rotation, radius], () => {
     scene.camera.set(matrix())
-  }, [rotation, radius])
+  })
 }

@@ -30,7 +30,7 @@ export class Disc extends Shape {
     })
     this.radius = new Atom(options.radius)
     this.segments = new Atom(options.segments)
-    effect(this.updateWorldMatrix.bind(this), [this.radius, this.segments])
+    effect([this.radius, this.segments], this.updateWorldMatrix.bind(this))
   }
 
   updateWorldMatrix() {

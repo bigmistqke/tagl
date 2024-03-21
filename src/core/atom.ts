@@ -1,5 +1,6 @@
 import { GL, Program } from './gl'
-import { Buffer, Token } from './tokens'
+import { Token } from './tokens'
+import { AtomMappedReturnValues as AtomArrayReturnValues } from './types'
 
 type SetterArgument<T> = T | ((value: T, flags: SetterFlags) => T)
 type SetterFlags = {
@@ -153,7 +154,8 @@ export class Atom<T> {
    *
    * @param {SetterArgument<T>} _value The new value for the Atom, or a function to produce the new value.
    */
-  set(_value: SetterArgument<T>) {
+  set(_value: SetterArgument<T>, equals?: boolean) {
+    if (equals && _value === this.value) return
     if (typeof _value === 'function') {
       // @ts-expect-error
       this.value = _value(this.value, this.flags)
@@ -294,8 +296,13 @@ export const atomize = <T>(value: T | Atom<T>) => {
  * responses to state changes in their applications.
  */
 
-export const effect = (callback: () => void, dependencies: (Atom<any> | Token<any> | Buffer<any>)[]) => {
-  const cleanups = dependencies.map((dependency) => dependency.subscribe(callback))
-  callback()
+export const effect = <TDeps extends (Atom<any> | Token<any>)[]>(
+  dependencies: TDeps,
+  callback: (...values: AtomArrayReturnValues<TDeps>) => void
+) => {
+  console.log(dependencies)
+  const getValues = () => dependencies.map((dep) => dep.get()) as AtomArrayReturnValues<TDeps>
+  const cleanups = dependencies.map((dependency) => dependency.subscribe(() => callback(...getValues())))
+  callback(...getValues())
   return () => cleanups.forEach((cleanup) => cleanup())
 }

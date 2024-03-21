@@ -1,6 +1,6 @@
 import { mat4, vec3, vec4 } from 'gl-matrix'
 
-import { Atom, GL, Pipeline, Token, uniform } from '@tagl/core'
+import { Atom, GL, Pipeline, uniform } from '@tagl/core'
 import { Uniform } from '@tagl/core/tokens'
 import { Node3D } from '@tagl/world/primitives/node-3d'
 
@@ -10,8 +10,8 @@ export class Scene extends GL {
   pipeline = new Pipeline(this)
 
   children = new Atom<Node3D[]>([])
-  localMatrix = new Token(mat4.create())
-  worldMatrix = new Token(mat4.create())
+  localMatrix = uniform.mat4(mat4.create())
+  worldMatrix = uniform.mat4(mat4.create())
 
   private nodesToUpdate: Node3D[] = new Array()
 

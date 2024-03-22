@@ -1,6 +1,6 @@
 import { mat4, vec3 } from 'gl-matrix'
 
-import { Atom, atomize } from '@tagl/core'
+import { Atom, atomize, memo } from '@tagl/core'
 import { Scene, Sphere } from '@tagl/world'
 import { orbit } from '@tagl/world/controls'
 import { For, h } from '@tagl/world/h'
@@ -30,8 +30,8 @@ h(
     each,
     shape: (value) =>
       h(Sphere, {
-        color: vec3.fromValues(0, value.get() / 10, 0),
-        matrix: mat4.fromTranslation(mat4.create(), vec3.fromValues(0, value.get() / 10, 0)),
+        matrix: memo([value], (value) => mat4.fromTranslation(mat4.create(), vec3.fromValues(0, value / 10, 0))),
+        color: vec3.fromValues(0, 1, 0),
         radius: 0.5,
         segments: 6,
         rings: 6,
@@ -42,14 +42,15 @@ h(
 setTimeout(() => {
   each.set((each) => {
     console.log('add')
-    each.push(4)
+    // each.push(4)
+    each[0] = -2
     return each
   })
-  setTimeout(() => {
+  /* setTimeout(() => {
     each.set((each) => {
       console.log('remove')
       each.pop()
       return each
     })
-  }, 2000)
+  }, 2000) */
 }, 2000)

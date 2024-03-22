@@ -155,18 +155,13 @@ export class Atom<T> {
    * @param {SetterArgument<T>} _value The new value for the Atom, or a function to produce the new value.
    */
   set(_value: SetterArgument<T>, equals?: boolean) {
+    const value = typeof _value === 'function' ? _value(this.value, this.flags) : _value
+
     if (equals && _value === this.value) return
-    if (typeof _value === 'function') {
-      // @ts-expect-error
-      this.value = _value(this.value, this.flags)
-    } else {
-      this.value = _value
-    }
+    this.value = value
 
     if (this.shouldNotify) this.__.notify()
-    if (this.shouldRender) {
-      this.__.requestRender()
-    }
+    if (this.shouldRender) this.__.requestRender()
 
     this.shouldNotify = true
     this.shouldRender = true
@@ -259,12 +254,8 @@ export const atomize = <T>(value: T | Atom<T>) => {
 
 /**********************************************************************************/
 /*                                                                                */
-/*                                     createAtom                                    */
+/*                                     Effect                                     */
 /*                                                                                */
-/**********************************************************************************/
-
-/**********************************************************************************/
-/*                                     EFFECT                                     */
 /**********************************************************************************/
 
 /**
@@ -296,13 +287,33 @@ export const atomize = <T>(value: T | Atom<T>) => {
  * responses to state changes in their applications.
  */
 
-export const effect = <TDeps extends (Atom<any> | Token<any>)[]>(
+export const effect = <const TDeps extends (Atom<any> | Token<any>)[]>(
   dependencies: TDeps,
-  callback: (...values: AtomArrayReturnValues<TDeps>) => void
+  callback: (values: AtomArrayReturnValues<TDeps>) => void
 ) => {
-  console.log(dependencies)
-  const getValues = () => dependencies.map((dep) => dep.get()) as AtomArrayReturnValues<TDeps>
-  const cleanups = dependencies.map((dependency) => dependency.subscribe(() => callback(...getValues())))
-  callback(...getValues())
+  const values = Array.from({ length: dependencies.length }) as AtomArrayReturnValues<TDeps>
+  const getLatestDependencies = () => {
+    for (let i = 0; i < dependencies.length; i++) {
+      values[i] = dependencies[i]!.get()
+    }
+    return values
+  }
+  const cleanups = dependencies.map((dependency) => dependency.subscribe(() => callback(getLatestDependencies())))
+  callback(getLatestDependencies())
   return () => cleanups.forEach((cleanup) => cleanup())
+}
+
+/**********************************************************************************/
+/*                                                                                */
+/*                                       Memo                                     */
+/*                                                                                */
+/**********************************************************************************/
+
+export const memo = <TValue, const TDeps extends (Atom<any> | Token<any>)[]>(
+  dependencies: TDeps,
+  callback: (values: AtomArrayReturnValues<TDeps>) => TValue
+) => {
+  const atom = new Atom<TValue>(null!)
+  effect(dependencies, (dependencies) => atom.set(callback(dependencies)))
+  return atom
 }

@@ -25,7 +25,6 @@ export class For<T extends readonly any[], TResult extends Node3D> extends Node3
       const newAtoms = Array.from({ length: delta }).map((v) => new Atom<T>(null!))
       this._atoms.push(...newAtoms)
     } else if (delta < 0) {
-      console.log(delta)
       this._atoms.splice(each.length + delta, delta * -1)
     }
     this.each.get().forEach((value, index) => this._atoms[index]?.set(value, true))

@@ -1,7 +1,10 @@
 import { Atom } from '@tagl/core'
-import { Node3D } from '..'
+import { Node3D, Scene } from '..'
 
-export const h = <T extends new (...args: any[]) => Node3D, TChildren extends (Node3D | Atom<Node3D | undefined>)[]>(
+export const h = <
+  T extends new (...args: any[]) => Node3D | Scene,
+  const TChildren extends (Node3D | Atom<Node3D | undefined>)[]
+>(
   Constructor: T,
   props: ConstructorParameters<T>[0],
   ...children: TChildren

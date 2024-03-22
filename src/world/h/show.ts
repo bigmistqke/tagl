@@ -1,12 +1,14 @@
 import { Atom, atomize, effect } from '@tagl/core'
 import { Node3D, Scene } from '@tagl/world'
 import { mat4 } from 'gl-matrix'
+import { h } from './h'
 
+type ShowConfig = { when: Atom<boolean> | boolean; matrix?: Atom<mat4> }
 export class Show extends Node3D {
   when: Atom<boolean>
   _parent = new Atom<Node3D | Scene | undefined>(undefined)
 
-  constructor(config: { when: Atom<boolean> | boolean; matrix: Atom<mat4> }) {
+  constructor(config: ShowConfig) {
     super(config.matrix)
     this.when = atomize(config.when)
     effect([this.when, this._parent], ([when, _parent]) => {
@@ -27,3 +29,8 @@ export class Show extends Node3D {
     return this
   }
 }
+
+export const show = <const TChildren extends (Node3D | Atom<Node3D | undefined>)[]>(
+  config: ShowConfig,
+  ...shapes: TChildren
+) => h(Show, config, ...shapes)

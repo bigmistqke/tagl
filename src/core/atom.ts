@@ -298,7 +298,9 @@ export const effect = <const TDeps extends (Atom<any> | Token<any>)[]>(
     }
     return values
   }
-  const cleanups = dependencies.map((dependency) => dependency.subscribe(() => callback(getLatestDependencies())))
+  const cleanups = dependencies.map((dependency) =>
+    dependency.subscribe(() => callback(getLatestDependencies()))
+  )
   callback(getLatestDependencies())
   return () => cleanups.forEach((cleanup) => cleanup())
 }
@@ -309,11 +311,21 @@ export const effect = <const TDeps extends (Atom<any> | Token<any>)[]>(
 /*                                                                                */
 /**********************************************************************************/
 
-export const memo = <TValue, const TDeps extends (Atom<any> | Token<any>)[]>(
+export function memo<TValue, const TDeps extends (Atom<any> | Token<any>)[]>(
   dependencies: TDeps,
-  callback: (values: AtomArrayReturnValues<TDeps>) => TValue
-) => {
-  const atom = new Atom<TValue>(null!)
-  effect(dependencies, (dependencies) => atom.set(callback(dependencies)))
+  callback: (values: AtomArrayReturnValues<TDeps>, previous: TValue) => TValue,
+  defaultValue: TValue
+): Atom<TValue>
+export function memo<TValue, const TDeps extends (Atom<any> | Token<any>)[]>(
+  dependencies: TDeps,
+  callback: (values: AtomArrayReturnValues<TDeps>, previous?: TValue) => TValue
+): Atom<TValue>
+export function memo<TValue, const TDeps extends (Atom<any> | Token<any>)[]>(
+  dependencies: TDeps,
+  callback: (values: AtomArrayReturnValues<TDeps>, previous?: TValue) => TValue,
+  defaultValue?: TValue
+) {
+  const atom = new Atom<TValue>(defaultValue!)
+  effect(dependencies, (dependencies) => atom.set((atom) => callback(dependencies, atom)))
   return atom
 }

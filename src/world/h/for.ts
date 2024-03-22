@@ -1,15 +1,23 @@
-import { Atom, atomize, effect } from '@tagl/core'
+import { Atom, Uniform, atomize, effect } from '@tagl/core'
+import { mat4 } from 'gl-matrix'
 import { Node3D } from '../primitives/node-3d'
+import { h } from './h'
 
-export class For<T extends readonly any[], TResult extends Node3D> extends Node3D {
+type MorphConfig<T extends readonly any[], TResult extends Node3D> = {
+  from: T | Atom<T>
+  to: (value: Atom<T[number]>) => TResult
+  matrix?: Atom<mat4> | Uniform<mat4>
+}
+
+export class Index<T extends readonly any[], TResult extends Node3D> extends Node3D {
   each: Atom<T>
 
   private _shapes: TResult[] = []
   private _atoms: Atom<T>[]
 
-  constructor(private config: { each: T | Atom<T>; shape: (value: Atom<T[number]>) => TResult }) {
-    super()
-    this.each = atomize<T>(config.each)
+  constructor(private config: MorphConfig<T, TResult>) {
+    super(config.matrix)
+    this.each = atomize<T>(config.from)
     this._atoms = this.each.get().map((value) => new Atom(value))
 
     effect([this.each], () => {
@@ -35,7 +43,7 @@ export class For<T extends readonly any[], TResult extends Node3D> extends Node3
     const length = this._shapes.length
     if (delta > 0) {
       const newShapes = Array.from({ length: delta }).map((_, index) => {
-        return this.config.shape(this._atoms[length + index]!).bind(this)
+        return this.config.to(this._atoms[length + index]!).bind(this)
       })
       this._shapes.push(...newShapes)
     } else if (delta < 0) {
@@ -45,3 +53,8 @@ export class For<T extends readonly any[], TResult extends Node3D> extends Node3
     }
   }
 }
+
+export const index = <T extends readonly any[], TResult extends Node3D>(
+  config: MorphConfig<T, TResult>,
+  ...children: Node3D[]
+) => h(Index<T, TResult>, config, ...children)

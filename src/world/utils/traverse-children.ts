@@ -16,6 +16,8 @@ export const traverseChildren = (
   node: Node3D | Scene,
   callback: (object3D: Node3D, stop: () => void, preventBranch: () => void) => void
 ) => {
+  if (node.children.get().length === 0) return
+
   Array.prototype.push.apply(children, node.children.get())
 
   shouldStop = false

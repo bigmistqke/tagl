@@ -14,7 +14,7 @@ export const traverseParent = (
 
   while (!shouldStop && currentNode && !(currentNode instanceof Scene)) {
     if (callback?.(currentNode, stop) === false) {
-      return
+      return undefined
     }
     currentNode = 'parent' in currentNode ? currentNode.parent : undefined
   }

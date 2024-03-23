@@ -13,7 +13,8 @@ export class Scene extends GL {
   localMatrix = uniform.mat4(mat4.create())
   worldMatrix = uniform.mat4(mat4.create())
 
-  private nodesToUpdate: Node3D[] = new Array()
+  private nodesToUpdate: Node3D[] = new Array(1000)
+  private nodesToUpdateCount = 0
 
   constructor(public canvas: HTMLCanvasElement) {
     super(canvas)
@@ -23,8 +24,8 @@ export class Scene extends GL {
   }
 
   addToUpdates(node: Node3D) {
-    this.nodesToUpdate.push(node)
-    // this.requestRender()
+    this.nodesToUpdate[this.nodesToUpdateCount] = node
+    this.nodesToUpdateCount++
   }
 
   render() {
@@ -32,10 +33,10 @@ export class Scene extends GL {
   }
 
   update(): void {
-    for (let i = 0; i < this.nodesToUpdate.length; i++) {
+    for (let i = 0; i < this.nodesToUpdateCount; i++) {
       this.nodesToUpdate[i]!.updateWorldMatrix()
     }
-    this.nodesToUpdate.length = 0
+    this.nodesToUpdateCount = 0
   }
 
   private _perspective = (matrix?: mat4) =>
@@ -48,7 +49,10 @@ export class Scene extends GL {
     )
 
   castRayFromCamera(e?: MouseEvent | { x: number; y: number }) {
-    return getRayFromCamera(this, e instanceof MouseEvent ? { x: e.clientX, y: e.clientY } : e ? e : { x: 0, y: 0 })
+    return getRayFromCamera(
+      this,
+      e instanceof MouseEvent ? { x: e.clientX, y: e.clientY } : e ? e : { x: 0, y: 0 }
+    )
   }
 }
 
@@ -83,7 +87,11 @@ function getRayFromCamera(scene: Scene, coord?: { x: number; y: number }) {
   vec3.normalize(direction, direction)
 
   // The ray origin is the camera's position in the world, which can be directly extracted from the inverse view matrix
-  const origin = vec3.fromValues(inverseViewMatrix[12], inverseViewMatrix[13], inverseViewMatrix[14])
+  const origin = vec3.fromValues(
+    inverseViewMatrix[12],
+    inverseViewMatrix[13],
+    inverseViewMatrix[14]
+  )
 
   return new Ray(origin, direction)
 }

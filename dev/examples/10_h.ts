@@ -1,6 +1,6 @@
 import { mat4, vec3 } from 'gl-matrix'
 
-import { Atom, memo } from '@tagl/core'
+import { Atom, atomize, memo } from '@tagl/core'
 import { Scene, Sphere } from '@tagl/world'
 import { orbit } from '@tagl/world/controls'
 import { h, index, show } from '@tagl/world/h'
@@ -18,15 +18,22 @@ orbit(scene, { near: 0.1, initialRadius: 0.2 })
 const each = new Atom([0, 1, 2, 3])
 const when = new Atom(true)
 
-h(
-  Sphere,
-  {
+const CustomSphere = (props: { radius: number }) => {
+  const radius = atomize(props.radius)
+  return h(Sphere, {
     color: vec3.fromValues(0, 0, 1),
     matrix: mat4.create(),
-    radius: 0.5,
+    radius,
     segments: 6,
     rings: 6,
     mode: 'POINTS',
+  })
+}
+
+const y = h(
+  CustomSphere,
+  {
+    radius: 3,
   },
   show(
     { when },

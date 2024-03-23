@@ -229,7 +229,8 @@ export class Program {
     this._options = options
     this._glRecord = glRegistry.register(options.gl.ctx)
 
-    const { glProgram, locations } = ProgramRegistry.getInstance(options.gl).register(this).value as ProgramRecord
+    const { glProgram, locations } = ProgramRegistry.getInstance(options.gl).register(this)
+      .value as ProgramRecord
 
     this.glProgram = glProgram
     this.locations = locations
@@ -246,10 +247,13 @@ export class Program {
       this._indicesBuffer = (
         options.indices instanceof Token
           ? options.indices
-          : buffer(options.indices instanceof Atom ? options.indices : new Uint16Array(options.indices), {
-              target: 'ELEMENT_ARRAY_BUFFER',
-              usage: 'STATIC_DRAW',
-            })
+          : buffer(
+              options.indices instanceof Atom ? options.indices : new Uint16Array(options.indices),
+              {
+                target: 'ELEMENT_ARRAY_BUFFER',
+                usage: 'STATIC_DRAW',
+              }
+            )
       ).__.bind(this)
     } else {
       if (typeof options.count === 'object') {

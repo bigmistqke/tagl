@@ -1,4 +1,4 @@
-import { Atom, Uniform, atomize, effect } from '@tagl/core'
+import { Atom, Uniform, atomize } from '@tagl/core'
 import { mat4 } from 'gl-matrix'
 import { Node3D } from '../primitives/node-3d'
 import { h } from './h'
@@ -20,7 +20,7 @@ export class Index<T extends readonly any[], TResult extends Node3D> extends Nod
     this.each = atomize<T>(config.from)
     this._atoms = this.each.get().map((value) => new Atom(value))
 
-    effect([this.each], () => {
+    this.each.subscribe(() => {
       this._updateAtoms()
       this._updateShapes()
     })
@@ -35,7 +35,10 @@ export class Index<T extends readonly any[], TResult extends Node3D> extends Nod
     } else if (delta < 0) {
       this._atoms.splice(each.length + delta, delta * -1)
     }
-    this.each.get().forEach((value, index) => this._atoms[index]?.set(value, true))
+    const get = this.each.get()
+    for (let i = 0; i < get.length; i++) {
+      this._atoms[i]?.set(get[i])
+    }
   }
 
   private _updateShapes() {

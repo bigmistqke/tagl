@@ -27,14 +27,8 @@ export class Node3D {
 
   constructor(public localMatrix: Token<mat4> | Atom<mat4> = new Atom(mat4.create())) {
     this.worldMatrix = uniform.mat4(mat4.clone(localMatrix.get()))
-    this.worldMatrix.onBind((program) => {
-      this._program = program
-    })
-
-    this.localMatrix.subscribe(() => {
-      this._dirty()
-      this.worldMatrix.__.requestRender()
-    })
+    this.worldMatrix.onBind((program) => (this._program = program))
+    this.localMatrix.subscribe(this._dirty.bind(this))
   }
 
   onMount(callback: (origin: Scene | undefined) => void) {
@@ -95,7 +89,11 @@ export class Node3D {
   }
 
   mount() {
-    this.origin = this.parent ? ('origin' in this.parent ? this.parent.origin : this.parent) : undefined
+    this.origin = this.parent
+      ? 'origin' in this.parent
+        ? this.parent.origin
+        : this.parent
+      : undefined
     this.origin?.addToUpdates(this)
     for (let i = 0; i < this._onMountHandlers.length; i++) {
       this._onMountHandlers[i]!(this.origin)
@@ -114,7 +112,7 @@ export class Node3D {
       if (this.flag === 2) {
         this.worldMatrix.set((matrix, flags) => {
           flags.preventRender()
-          // flags.preventNotification()
+          flags.preventNotification()
 
           mat4.multiply(matrix, this.parent!.worldMatrix.get(), this.localMatrix.get())
 
@@ -135,24 +133,27 @@ export class Node3D {
     this.origin?.addToUpdates(this)
     this.flag = 2
 
-    traverseChildren(this, (node, stop) => {
+    traverseChildren(this, this._dirtyChildrenCallback)
+    traverseParent(this, this._dirtyParentCallback)
+
+    if (this._program && !this._program.gl.isPending) this._program.gl.requestRender()
+  }
+
+  private _dirtyChildrenCallback(node: Node3D, stop: () => void) {
+    if (node.flag === 0) {
+      node.flag = 2
+      this.origin?.addToUpdates(node)
+    } else stop()
+  }
+
+  private _dirtyParentCallback(node: Node3D | Scene, stop: () => void) {
+    if (node instanceof Node3D) {
       if (node.flag === 0) {
-        node.flag = 2
-        this.origin?.addToUpdates(node.bind(node))
-      } else stop()
-    })
-
-    traverseParent(this, (node, stop) => {
-      if (node instanceof Node3D) {
-        if (node.flag === 0) {
-          node.flag = 1
-          this.origin?.addToUpdates(node.bind(node))
-        } else {
-          stop()
-        }
+        node.flag = 1
+        this.origin?.addToUpdates(node)
+      } else {
+        stop()
       }
-    })
-
-    this._program?.gl.requestRender()
+    }
   }
 }

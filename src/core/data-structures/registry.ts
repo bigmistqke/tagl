@@ -1,5 +1,5 @@
 /** Map with reference-count and dirty-property */
-export class RegistryBase<TKey, TData> {
+export class RegistryBase<TKey, TData = unknown> {
   map = new Map<TKey, { value: TData; count: number; dirty: boolean }>()
 
   has(key: TKey) {
@@ -10,7 +10,7 @@ export class RegistryBase<TKey, TData> {
     return this.map.get(key)
   }
 
-  _register(key: TKey, data: () => TData) {
+  _register<T extends TData>(key: TKey, data: () => T) {
     const record = this.map.get(key)
     if (!record) {
       const entry = {
@@ -21,8 +21,11 @@ export class RegistryBase<TKey, TData> {
       this.map.set(key, entry)
       return entry
     } else {
-      record.count++
-      return record
+      return record as {
+        value: T
+        count: number
+        dirty: boolean
+      }
     }
   }
 
@@ -51,6 +54,6 @@ export class RegistryBase<TKey, TData> {
 }
 
 /** Map with reference-count and dirty-property */
-export class Registry<TKey, TData> extends RegistryBase<TKey, TData> {
+export class Registry<TKey, TData = unknown> extends RegistryBase<TKey, TData> {
   register = super._register
 }

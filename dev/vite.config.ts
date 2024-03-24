@@ -1,12 +1,9 @@
 import { defineConfig } from 'vite'
+import tsconfigPaths from 'vite-tsconfig-paths'
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      src: '../src',
-    },
-  },
   plugins: [
+    tsconfigPaths(),
     {
       name: 'Replace env variables',
       transform(code, id) {
@@ -30,5 +27,6 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    minify: false,
   },
 })

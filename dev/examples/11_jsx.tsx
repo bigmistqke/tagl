@@ -3,7 +3,7 @@ import { mat4, vec3 } from 'gl-matrix'
 import { Atom, atomize, batch, memo } from '@tagl/core'
 import { Scene, Sphere } from '@tagl/world'
 import { orbit } from '@tagl/world/controls'
-import { Index, Show, h } from '@tagl/world/h'
+import { Morph, Show, h } from '@tagl/world/h'
 
 const canvas = document.createElement('canvas')
 document.body.appendChild(canvas)
@@ -39,10 +39,10 @@ const CustomSphere = (props: { radius: number }) => {
 ;(
   <CustomSphere radius={3}>
     <Show when={when}>
-      <Index
+      <Morph
         from={each}
         to={(row) => (
-          <Index
+          <Morph
             from={row}
             to={(value) => (
               <Sphere

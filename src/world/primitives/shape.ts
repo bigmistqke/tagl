@@ -61,13 +61,16 @@ export class Shape extends Node3D {
   program: any
 
   constructor(private shapeOptions: ShapeOptions) {
-    const matrix = shapeOptions.matrix instanceof Token ? shapeOptions.matrix : uniform.mat4(shapeOptions.matrix)
+    const matrix =
+      shapeOptions.matrix instanceof Token ? shapeOptions.matrix : uniform.mat4(shapeOptions.matrix)
 
     super(matrix)
 
     this.color = uniform.vec3(shapeOptions.color)
     this.vertices =
-      shapeOptions.vertices instanceof Token ? shapeOptions.vertices : attribute.vec3(shapeOptions.vertices)
+      shapeOptions.vertices instanceof Token
+        ? shapeOptions.vertices
+        : attribute.vec3(shapeOptions.vertices)
     this.uv = shapeOptions.uv instanceof Token ? shapeOptions.uv : attribute.vec2(shapeOptions.uv)
 
     this.mode = atomize(shapeOptions.mode || 'TRIANGLES')
@@ -149,6 +152,7 @@ export class Shape extends Node3D {
   }
 
   private _cleanup() {
+    console.log('CLEANUP', this.origin, this)
     this.origin?.stack.set((stack, flags) => {
       const index = stack.findIndex((program) => program === this.program)
       if (index !== -1) {

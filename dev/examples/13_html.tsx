@@ -3,7 +3,7 @@ import { mat4, vec3 } from 'gl-matrix'
 import { Atom, atomize, memo } from '@tagl/core'
 import { Scene, Sphere } from '@tagl/world'
 import { orbit } from '@tagl/world/controls'
-import { Fragment, Morph, Show, h } from '@tagl/world/h'
+import { Fragment, Match, Morph, Show, h } from '@tagl/world/h'
 import { html, on, prop } from '@tagl/world/html'
 
 const canvas = document.createElement('canvas')
@@ -68,14 +68,16 @@ const Tetromino = (props: {
       <Morph
         from={column}
         to={(value, y) => (
-          <Sphere
-            color={vec3.fromValues(0, 1, 0)}
-            matrix={mat4.fromTranslation(mat4.create(), [-x / 10, y / 10, 0])}
-            radius={0.5}
-            segments={6}
-            rings={6}
-            mode="TRIANGLES"
-          />
+          <Show when={value}>
+            <Sphere
+              color={vec3.fromValues(0, 1, 0)}
+              matrix={mat4.fromTranslation(mat4.create(), [-x / 10, y / 10, 0])}
+              radius={0.5}
+              segments={6}
+              rings={6}
+              mode="TRIANGLES"
+            />
+          </Show>
         )}
       />
     )}
@@ -84,7 +86,18 @@ const Tetromino = (props: {
 
 ;(
   <Show when={when}>
-    <Tetromino type={type} />
+    <Match
+      when={type}
+      cases={{
+        I: <Tetromino type="I" />,
+        O: <Tetromino type="O" />,
+        T: <Tetromino type="T" />,
+        S: <Tetromino type="S" />,
+        Z: <Tetromino type="Z" />,
+        L: <Tetromino type="L" />,
+        J: <Tetromino type="J" />,
+      }}
+    />
   </Show>
 ).bind(scene)
 

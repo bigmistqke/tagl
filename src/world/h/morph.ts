@@ -1,15 +1,15 @@
-import { Atom, Uniform, atomize } from '@tagl/core'
+import { Atom, Uniform, atomize, batch } from '@tagl/core'
 import { mat4 } from 'gl-matrix'
 import { Node3D } from '../primitives/node-3d'
 import { h } from './h'
 
 type MorphConfig<T extends readonly any[], TResult extends Node3D> = {
   from: T | Atom<T>
-  to: (value: Atom<T[number]>) => TResult
+  to: (value: Atom<T[number]>, index: number) => TResult
   matrix?: Atom<mat4> | Uniform<mat4>
 }
 
-export class Index<T extends readonly any[], TResult extends Node3D> extends Node3D {
+export class Morph<T extends readonly any[], TResult extends Node3D | null> extends Node3D {
   each: Atom<T>
 
   private _shapes: TResult[] = []
@@ -20,7 +20,13 @@ export class Index<T extends readonly any[], TResult extends Node3D> extends Nod
     this.each = atomize<T>(config.from)
     this._atoms = this.each.get().map((value) => new Atom(value))
 
-    this.each.subscribe(() => {
+    this.each.subscribe((each) => {
+      batch(() => {
+        this._updateAtoms()
+        this._updateShapes()
+      })
+    })
+    batch(() => {
       this._updateAtoms()
       this._updateShapes()
     })
@@ -42,22 +48,28 @@ export class Index<T extends readonly any[], TResult extends Node3D> extends Nod
   }
 
   private _updateShapes() {
+    console.log('updateSHapes', this.origin, this)
+
     const delta = this._atoms.length - this._shapes.length
     const length = this._shapes.length
     if (delta > 0) {
       const newShapes = Array.from({ length: delta }).map((_, index) => {
-        return this.config.to(this._atoms[length + index]!).bind(this)
+        const shape = this.config.to(this._atoms[length + index]!, index + (length - 1))
+        return (shape instanceof Node3D ? shape.bind(this) : shape) as TResult
       })
       this._shapes.push(...newShapes)
     } else if (delta < 0) {
       this._shapes.splice(length + delta, delta * -1).forEach((shape) => {
-        shape.unbind()
+        if (shape instanceof Node3D) {
+          console.log('UNBIND!', shape)
+          shape.unbind()
+        }
       })
     }
   }
 }
 
-export const index = <T extends readonly any[], TResult extends Node3D>(
+export const morph = <T extends readonly any[], TResult extends Node3D>(
   config: MorphConfig<T, TResult>,
   ...children: Node3D[]
-) => h(Index<T, TResult>, config, ...children)
+) => h(Morph<T, TResult>, config, ...children)

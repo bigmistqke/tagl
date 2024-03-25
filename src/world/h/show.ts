@@ -3,7 +3,7 @@ import { Node3D, Scene } from '@tagl/world'
 import { mat4 } from 'gl-matrix'
 import { h } from './h'
 
-type ShowConfig = { when: Atom<boolean> | boolean; matrix?: Atom<mat4> }
+type ShowConfig = { when: Atom<any> | any; matrix?: Atom<mat4> }
 export class Show extends Node3D {
   when: Atom<boolean>
   _parent = new Atom<Node3D | Scene | undefined>(undefined)

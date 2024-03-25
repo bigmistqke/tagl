@@ -1,4 +1,6 @@
-export * from './for'
+export * from './fragment'
 export * from './h'
+export * from './match'
+export * from './morph'
 export * from './root'
 export * from './show'

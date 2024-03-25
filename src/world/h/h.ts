@@ -42,7 +42,7 @@ export const h = <
         }
         previous = child
       })
-    } else {
+    } else if (child instanceof Node3D) {
       child.bind(shape)
     }
   })

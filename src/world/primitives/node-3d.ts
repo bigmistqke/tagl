@@ -1,7 +1,7 @@
 import { mat4 } from 'gl-matrix'
 import { TODO } from 'internal-utils'
 
-import { Atom, Program, uniform } from '@tagl/core'
+import { Atom, atomize, uniform } from '@tagl/core'
 import { Token, Uniform } from '@tagl/core/tokens'
 
 import { traverseChildren } from '@tagl/world/utils/traverse-children'
@@ -22,12 +22,12 @@ export class Node3D {
 
   private _onMountHandlers: ((origin: Scene | undefined) => void)[] = []
   private _onCleanupHandlers: ((origin: Scene | undefined) => void)[] = []
-  private _onUpdateHandlers: (() => void)[] = []
-  private _program: Program | undefined
+  private _onWorldMatrixUpdateHandlers: (() => void)[] = []
+  localMatrix: any
 
-  constructor(public localMatrix: Token<mat4> | Atom<mat4> = new Atom(mat4.create())) {
-    this.worldMatrix = uniform.mat4(mat4.clone(localMatrix.get()))
-    this.worldMatrix.onBind((program) => (this._program = program))
+  constructor(localMatrix: mat4 | Token<mat4> | Atom<mat4> = new Atom(mat4.create())) {
+    this.localMatrix = localMatrix instanceof Token ? localMatrix : atomize(localMatrix)
+    this.worldMatrix = uniform.mat4(mat4.clone(this.localMatrix.get()))
     this.localMatrix.subscribe(this._dirty.bind(this))
   }
 
@@ -39,12 +39,14 @@ export class Node3D {
     this._onCleanupHandlers.push(callback)
     return TODO('cleanup onCleanup')
   }
-  onUpdate(callback: () => void) {
-    this._onUpdateHandlers.push(callback)
+  onWorldMatrixUpdate(callback: () => void) {
+    this._onWorldMatrixUpdateHandlers.push(callback)
     return TODO('cleanup onUpdate')
   }
 
   bind(parent: Node3D | Scene) {
+    if (parent === this.parent) return
+
     if (!parent) {
       console.error('no parent', this)
       return this
@@ -72,7 +74,10 @@ export class Node3D {
 
     return this
   }
+
   unbind() {
+    if (!this.parent) return
+
     traverseChildren(this, (node) => node.cleanup())
 
     this.cleanup()
@@ -94,6 +99,7 @@ export class Node3D {
         ? this.parent.origin
         : this.parent
       : undefined
+
     this.origin?.addToUpdates(this)
     for (let i = 0; i < this._onMountHandlers.length; i++) {
       this._onMountHandlers[i]!(this.origin)
@@ -104,22 +110,22 @@ export class Node3D {
     for (let i = 0; i < this._onCleanupHandlers.length; i++) {
       this._onCleanupHandlers[i]!(this.origin)
     }
-    this.origin = undefined
+    // this.origin = undefined
   }
 
   updateWorldMatrix() {
     try {
       if (this.flag === 2) {
         this.worldMatrix.set((matrix, flags) => {
-          flags.preventRender()
+          // flags.preventRender()
           flags.preventNotification()
 
           mat4.multiply(matrix, this.parent!.worldMatrix.get(), this.localMatrix.get())
 
           return matrix
         })
-        for (let i = 0; i < this._onUpdateHandlers.length; i++) {
-          this._onUpdateHandlers[i]!()
+        for (let i = 0; i < this._onWorldMatrixUpdateHandlers.length; i++) {
+          this._onWorldMatrixUpdateHandlers[i]!()
         }
       }
     } finally {
@@ -133,10 +139,12 @@ export class Node3D {
     this.origin?.addToUpdates(this)
     this.flag = 2
 
-    traverseChildren(this, this._dirtyChildrenCallback)
-    traverseParent(this, this._dirtyParentCallback)
+    traverseChildren(this, this._dirtyChildrenCallback.bind(this))
+    traverseParent(this, this._dirtyParentCallback.bind(this))
 
-    if (this._program && !this._program.gl.isPending) this._program.gl.requestRender()
+    if (this.origin && !this.origin.isPending) {
+      this.origin.requestRender()
+    }
   }
 
   private _dirtyChildrenCallback(node: Node3D, stop: () => void) {

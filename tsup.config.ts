@@ -23,5 +23,6 @@ export const tsup: Options = {
     'src/world/controls/index.ts',
     'src/world/bounds/index.ts',
     'src/world/h/index.ts',
+    'src/world/html/index.ts',
   ],
 }

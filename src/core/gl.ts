@@ -161,16 +161,19 @@ export class GL {
   render() {
     this.isPending = false
 
+    this.ctx.clear(this.ctx.COLOR_BUFFER_BIT | this.ctx.DEPTH_BUFFER_BIT)
+    this.ctx.clearDepth(1.0)
     this.ctx.enable(this.ctx.DEPTH_TEST)
     this.ctx.depthFunc(this.ctx.LEQUAL)
     this.ctx.depthRange(0.2, 10)
-    this.ctx.clearDepth(1.0)
 
     for (let i = 0; i < this._onBeforeRenderCallbacks.length; i++) {
       this._onBeforeRenderCallbacks[i]!()
     }
 
     const stack = this.stack.get()
+
+    console.log(stack)
 
     for (let i = 0; i < stack.length; i++) {
       const element = stack[i]

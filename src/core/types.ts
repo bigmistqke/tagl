@@ -1,6 +1,6 @@
 import { mat2, mat3, mat4, vec2, vec3, vec4 } from 'gl-matrix'
-import { Atom } from './atom'
 import { Registry } from './data-structures/registry'
+import { Atom } from './reactive'
 import { Token } from './tokens'
 import { BufferRegistry, TextureRegistry } from './virtualization/registries'
 import { type TextureSlots } from './virtualization/texture-slots'
@@ -80,7 +80,9 @@ type SetterControl = {
   preventRender: () => void
   preventNotification: () => void
 }
-export type Setter<T = Float32Array> = (value: T | ((value: T, control: SetterControl) => T)) => void
+export type Setter<T = Float32Array> = (
+  value: T | ((value: T, control: SetterControl) => T)
+) => void
 export type GLProgramMemory = {
   buffers: BufferRegistry
   attributes: Map<string, WebGLBuffer>

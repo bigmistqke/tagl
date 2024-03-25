@@ -1,4 +1,4 @@
-import { Atom, atomize, effect } from '@tagl/core/atom'
+import { Atom, atomize, Effect } from '@tagl/core'
 
 import { Shape, ShapeOptions } from '../primitives/shape'
 
@@ -31,7 +31,7 @@ export class Sphere extends Shape {
     this.segments = atomize(options.segments)
     this.rings = atomize(options.rings)
 
-    effect([this.radius, this.segments], this.update.bind(this))
+    new Effect([this.radius, this.segments], this.update.bind(this), [this.vertices, this.indices])
   }
 
   update() {

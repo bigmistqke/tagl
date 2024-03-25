@@ -3,6 +3,7 @@ import { vec3 } from 'gl-matrix'
 import {
   Atom,
   Attribute,
+  Buffer,
   Program,
   ShaderToken,
   Token,
@@ -68,17 +69,18 @@ export class Shape extends Node3D {
 
     this.color = uniform.vec3(shapeOptions.color)
     this.vertices =
-      shapeOptions.vertices instanceof Token
+      shapeOptions.vertices instanceof Attribute
         ? shapeOptions.vertices
         : attribute.vec3(shapeOptions.vertices)
-    this.uv = shapeOptions.uv instanceof Token ? shapeOptions.uv : attribute.vec2(shapeOptions.uv)
+    this.uv =
+      shapeOptions.uv instanceof Attribute ? shapeOptions.uv : attribute.vec2(shapeOptions.uv)
 
     this.mode = atomize(shapeOptions.mode || 'TRIANGLES')
     this.count = shapeOptions.count !== undefined ? atomize(shapeOptions.count) : undefined
 
     this.indices =
       shapeOptions.indices !== undefined
-        ? shapeOptions.indices instanceof Token
+        ? shapeOptions.indices instanceof Buffer
           ? shapeOptions.indices
           : buffer(shapeOptions.indices, {
               target: 'ELEMENT_ARRAY_BUFFER',
@@ -152,15 +154,9 @@ export class Shape extends Node3D {
   }
 
   private _cleanup() {
-    console.log('CLEANUP', this.origin, this)
-    this.origin?.stack.set((stack, flags) => {
+    this.origin?.stack.set((stack) => {
       const index = stack.findIndex((program) => program === this.program)
-      if (index !== -1) {
-        stack.splice(index, 1)
-      } else {
-        flags.preventRender()
-        flags.preventNotification()
-      }
+      stack.splice(index, 1)
       return stack
     })
   }

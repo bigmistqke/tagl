@@ -1,4 +1,4 @@
-import { Atom, atomize, subscribe } from '@tagl/core'
+import { Atom, Effect, atomize } from '@tagl/core'
 import { Node3D, Scene } from '@tagl/world'
 import { mat4 } from 'gl-matrix'
 import { h } from './h'
@@ -11,7 +11,7 @@ export class Show extends Node3D {
   constructor(config: ShowConfig) {
     super(config.matrix)
     this.when = atomize(config.when)
-    subscribe([this.when, this._parent], ([when, _parent]) => {
+    new Effect([this.when, this._parent], ([when, _parent]) => {
       if (!_parent) return
       if (when) {
         super.bind(_parent)

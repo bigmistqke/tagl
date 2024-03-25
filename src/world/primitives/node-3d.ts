@@ -5,7 +5,6 @@ import { Atom, atomize, uniform } from '@tagl/core'
 import { Token, Uniform } from '@tagl/core/tokens'
 
 import { traverseChildren } from '@tagl/world/utils/traverse-children'
-import { traverseParent } from '../utils/traverse-parent'
 import { Scene } from './'
 
 export class Node3D {
@@ -23,12 +22,13 @@ export class Node3D {
   private _onMountHandlers: ((origin: Scene | undefined) => void)[] = []
   private _onCleanupHandlers: ((origin: Scene | undefined) => void)[] = []
   private _onWorldMatrixUpdateHandlers: (() => void)[] = []
-  localMatrix: any
+  localMatrix: Token<mat4> | Atom<mat4>
 
   constructor(localMatrix: mat4 | Token<mat4> | Atom<mat4> = new Atom(mat4.create())) {
-    this.localMatrix = localMatrix instanceof Token ? localMatrix : atomize(localMatrix)
-    this.worldMatrix = uniform.mat4(mat4.clone(this.localMatrix.get()))
-    this.localMatrix.subscribe(this._dirty.bind(this))
+    this.localMatrix = atomize(localMatrix)
+    this.worldMatrix = uniform.mat4(
+      mat4.clone(localMatrix instanceof Atom ? localMatrix.get() : localMatrix)
+    )
   }
 
   onMount(callback: (origin: Scene | undefined) => void) {
@@ -69,7 +69,13 @@ export class Node3D {
       })
     }
 
-    this.origin?.addToUpdates(this)
+    this.worldMatrix.derive(
+      [this.localMatrix, this.parent!.worldMatrix],
+      ([localMatrix, parentMatrix], matrix) => {
+        return mat4.multiply(matrix!, parentMatrix, localMatrix)
+      }
+    )
+
     this.flag = 2
 
     return this
@@ -100,7 +106,6 @@ export class Node3D {
         : this.parent
       : undefined
 
-    this.origin?.addToUpdates(this)
     for (let i = 0; i < this._onMountHandlers.length; i++) {
       this._onMountHandlers[i]!(this.origin)
     }
@@ -111,57 +116,5 @@ export class Node3D {
       this._onCleanupHandlers[i]!(this.origin)
     }
     // this.origin = undefined
-  }
-
-  updateWorldMatrix() {
-    try {
-      if (this.flag === 2) {
-        this.worldMatrix.set((matrix, flags) => {
-          // flags.preventRender()
-          flags.preventNotification()
-
-          mat4.multiply(matrix, this.parent!.worldMatrix.get(), this.localMatrix.get())
-
-          return matrix
-        })
-        for (let i = 0; i < this._onWorldMatrixUpdateHandlers.length; i++) {
-          this._onWorldMatrixUpdateHandlers[i]!()
-        }
-      }
-    } finally {
-      this.flag = 0
-    }
-  }
-
-  private _dirty() {
-    if (this.flag) return
-
-    this.origin?.addToUpdates(this)
-    this.flag = 2
-
-    traverseChildren(this, this._dirtyChildrenCallback.bind(this))
-    traverseParent(this, this._dirtyParentCallback.bind(this))
-
-    if (this.origin && !this.origin.isPending) {
-      this.origin.requestRender()
-    }
-  }
-
-  private _dirtyChildrenCallback(node: Node3D, stop: () => void) {
-    if (node.flag === 0) {
-      node.flag = 2
-      this.origin?.addToUpdates(node)
-    } else stop()
-  }
-
-  private _dirtyParentCallback(node: Node3D | Scene, stop: () => void) {
-    if (node instanceof Node3D) {
-      if (node.flag === 0) {
-        node.flag = 1
-        this.origin?.addToUpdates(node)
-      } else {
-        stop()
-      }
-    }
   }
 }

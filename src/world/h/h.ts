@@ -1,4 +1,4 @@
-import { Atom } from '@tagl/core'
+import { Atom, Effect } from '@tagl/core'
 import { Node3D } from '..'
 
 export const h = <
@@ -31,7 +31,7 @@ export const h = <
   children.forEach((child) => {
     if (child instanceof Atom) {
       let previous = child.get()?.bind(shape)
-      child.subscribe((child) => {
+      new Effect([child], ([child]) => {
         if (previous !== child) {
           if (previous) {
             previous.unbind()

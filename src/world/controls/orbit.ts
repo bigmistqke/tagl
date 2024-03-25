@@ -1,6 +1,6 @@
 import { mat4, vec2, vec3 } from 'gl-matrix'
 
-import { Atom, effect } from '@tagl/core/atom'
+import { Atom } from '@tagl/core/reactive'
 import { Scene } from '@tagl/world'
 
 export const orbit = (
@@ -77,5 +77,5 @@ export const orbit = (
   }
   window.addEventListener('wheel', onWheel, { passive: false })
 
-  effect([rotation, radius], () => scene.camera.set(matrix()))
+  scene.camera.derive([rotation, radius], () => matrix())
 }

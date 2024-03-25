@@ -1,5 +1,5 @@
 import { Program } from '..'
-import { Atom } from '../atom'
+import { Atom } from '../reactive'
 import { Token } from './token'
 
 /**********************************************************************************/
@@ -41,21 +41,12 @@ export type BufferOptions = {
 
 export class Buffer<T extends BufferSource> extends Token<T> {
   __: {
-    bind: (program: Program) => Buffer<T>
-    notify: () => void
-    requestRender: () => void
     update: (program: Program) => void
   }
 
   constructor(value: T | Atom<T>, options: BufferOptions) {
     super(value)
     this.__ = {
-      requestRender: this.atom.__.requestRender,
-      notify: this.atom.__.notify,
-      bind: (program) => {
-        this.atom.__.bind(program)
-        return this
-      },
       update: (program) => {
         const buffer = program.virtualProgram.registerBuffer(this.get(), options)
 
@@ -71,7 +62,11 @@ export class Buffer<T extends BufferSource> extends Token<T> {
         }
 
         if (buffer.dirty) {
-          program.gl.ctx.bufferData(program.gl.ctx[options.target], this.get(), program.gl.ctx[options.usage])
+          program.gl.ctx.bufferData(
+            program.gl.ctx[options.target],
+            this.get(),
+            program.gl.ctx[options.usage]
+          )
           buffer.dirty = false
         }
       },

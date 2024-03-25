@@ -1,4 +1,4 @@
-import { Atom, Uniform, atomize, batch } from '@tagl/core'
+import { Atom, Effect, Uniform, atomize } from '@tagl/core'
 import { mat4 } from 'gl-matrix'
 import { Node3D } from '../primitives/node-3d'
 import { h } from './h'
@@ -20,16 +20,12 @@ export class Morph<T extends readonly any[], TResult extends Node3D | null> exte
     this.each = atomize<T>(config.from)
     this._atoms = this.each.get().map((value) => new Atom(value))
 
-    this.each.subscribe((each) => {
-      batch(() => {
-        this._updateAtoms()
-        this._updateShapes()
-      })
-    })
-    batch(() => {
+    new Effect([this.each], ([each]) => {
       this._updateAtoms()
       this._updateShapes()
     })
+    this._updateAtoms()
+    this._updateShapes()
   }
 
   private _updateAtoms() {
@@ -48,8 +44,6 @@ export class Morph<T extends readonly any[], TResult extends Node3D | null> exte
   }
 
   private _updateShapes() {
-    console.log('updateSHapes', this.origin, this)
-
     const delta = this._atoms.length - this._shapes.length
     const length = this._shapes.length
     if (delta > 0) {
@@ -61,7 +55,6 @@ export class Morph<T extends readonly any[], TResult extends Node3D | null> exte
     } else if (delta < 0) {
       this._shapes.splice(length + delta, delta * -1).forEach((shape) => {
         if (shape instanceof Node3D) {
-          console.log('UNBIND!', shape)
           shape.unbind()
         }
       })

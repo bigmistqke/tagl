@@ -1,6 +1,6 @@
 import { vec3, vec4 } from 'gl-matrix'
 
-import { Atom } from '@tagl/core/atom'
+import { Atom } from '@tagl/core'
 import { Frame } from '@tagl/core/data-structures/frame'
 import { Frustum, Shape } from '@tagl/world'
 
@@ -47,11 +47,11 @@ export class AABB {
     for (let i = 0; i < vertices.length / 3; i = i + 3) {
       this.frame.offset = i
 
-      const [x, y, z] = vec3.transformMat4(this.scratch, this.frame.cast(), this.shape.node.worldMatrix.get()) as [
-        number,
-        number,
-        number
-      ]
+      const [x, y, z] = vec3.transformMat4(
+        this.scratch,
+        this.frame.cast(),
+        this.shape.node.worldMatrix.get()
+      ) as [number, number, number]
 
       this.bounds.set((bounds) => {
         if (x > bounds.x.max) {

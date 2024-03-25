@@ -1,6 +1,6 @@
 import { mat4, vec3 } from 'gl-matrix'
 
-import { Atom, atomize, memo } from '@tagl/core'
+import { Atom, atomize } from '@tagl/core'
 import { Scene, Sphere } from '@tagl/world'
 import { orbit } from '@tagl/world/controls'
 import { Fragment, Match, Morph, Show, h } from '@tagl/world/h'
@@ -63,7 +63,7 @@ const Tetromino = (props: {
   type: keyof typeof TETROMINO_SHAPES | Atom<keyof typeof TETROMINO_SHAPES>
 }) => (
   <Morph
-    from={memo([atomize(props.type)], ([type]) => TETROMINO_SHAPES[type])}
+    from={new Atom([atomize(props.type)], ([type]) => TETROMINO_SHAPES[type])}
     to={(column, x) => (
       <Morph
         from={column}
@@ -71,7 +71,7 @@ const Tetromino = (props: {
           <Show when={value}>
             <Sphere
               color={vec3.fromValues(0, 1, 0)}
-              matrix={mat4.fromTranslation(mat4.create(), [-x / 10, y / 10, 0])}
+              matrix={mat4.fromTranslation(mat4.create(), [y / 10, -x / 10, 0])}
               radius={0.5}
               segments={6}
               rings={6}
@@ -101,10 +101,10 @@ const Tetromino = (props: {
   </Show>
 ).bind(scene)
 
-const text = memo([when], ([when]) => (when ? 'hide' : 'show'))
+const text = new Atom([when], ([when]) => (when ? 'hide' : 'show'))
 
 const className = new Atom('red')
-setInterval(() => className.set((className) => (className === 'red' ? 'blue' : 'red')), 1000)
+// setInterval(() => className.set((className) => (className === 'red' ? 'blue' : 'red')), 1000)
 
 document.body.appendChild(html`
   <div style="position: absolute; z-index:1; top: 0px; left: 0px;">
@@ -112,7 +112,7 @@ document.body.appendChild(html`
     <select
       ${prop.class!(className)}
       ${on.change((event) => {
-        type.set(event.currentTarget.value as keyof typeof TETROMINO_SHAPES)
+        type.set(event.currentTarget!.value as keyof typeof TETROMINO_SHAPES)
       })}
     >
       ${Object.keys(TETROMINO_SHAPES)

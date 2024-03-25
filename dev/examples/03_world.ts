@@ -1,15 +1,15 @@
+import { Cube, Scene } from '@tagl/world'
 import { mat4, vec3 } from 'gl-matrix'
 import { glsl } from 'src/core'
-import { createCube, createScene } from 'world'
 
 const canvas = document.createElement('canvas')
 document.body.appendChild(canvas)
 
-const scene = createScene(canvas)
+const scene = new Scene(canvas)
 scene.autosize()
 
 //prettier-ignore
-const cube = createCube({
+const cube = new Cube({
   color: new Float32Array([1, 0, 0]),
   matrix: mat4.create(),
   fragment: ({color}) => glsl`#version 300 es
@@ -34,9 +34,9 @@ setInterval(() => {
   cube.color.set((color) => vec3.set(color, ...colors[toggle]))
 }, 500)
 
-scene.onLoop((time) => {
-  cube.matrix.set((matrix) => {
-    mat4.rotateX(matrix, matrix, 0.01 * Math.sin(time / 1000))
+scene.onLoop(() => {
+  cube.localMatrix.set((matrix) => {
+    mat4.rotateX(matrix, matrix, 0.01 * Math.sin(performance.now() / 1000))
     mat4.rotateY(matrix, matrix, 0.01)
     return matrix
   })

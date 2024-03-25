@@ -1,20 +1,8 @@
-import { Atom, atomize } from '../atom'
-import { Program } from '../gl'
-import { Accessor, Setter } from '../types'
+import { Atom } from '../reactive'
 
-export class Token<T = any> {
-  get: Accessor<T>
-  set: Setter<T>
-  subscribe: (callback: (value: any) => void) => () => void
-  onBeforeDraw: (callback: () => void) => () => void
-  onBind: (handler: (program: Program) => void) => () => void
-  atom: Atom<T>
+export class Token<T = any> extends Atom<T> {
   constructor(value: T | Atom<T>) {
-    this.atom = atomize(value)
-    this.get = this.atom.get.bind(this.atom)
-    this.set = this.atom.set.bind(this.atom)
-    this.subscribe = this.atom.subscribe.bind(this.atom)
-    this.onBeforeDraw = this.atom.onBeforeDraw.bind(this.atom)
-    this.onBind = this.atom.onBind.bind(this.atom)
+    if (value instanceof Atom) return value
+    super(value)
   }
 }

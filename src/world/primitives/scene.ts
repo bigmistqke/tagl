@@ -20,23 +20,11 @@ export class Scene extends GL {
     super(canvas)
     this.perspective = uniform.mat4(this._perspective())
     this.onResize(() => this.perspective.set(this._perspective))
-    this.pipeline.add(this.update.bind(this)).add(super.render.bind(this))
-  }
-
-  addToUpdates(node: Node3D) {
-    this.nodesToUpdate[this.nodesToUpdateCount] = node
-    this.nodesToUpdateCount++
+    this.pipeline.add(super.render.bind(this))
   }
 
   render() {
     this.pipeline.run()
-  }
-
-  update(): void {
-    for (let i = 0; i < this.nodesToUpdateCount; i++) {
-      this.nodesToUpdate[i]!.updateWorldMatrix()
-    }
-    this.nodesToUpdateCount = 0
   }
 
   private _perspective = (matrix?: mat4) =>

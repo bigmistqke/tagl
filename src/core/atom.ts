@@ -2,10 +2,10 @@
  * Signal-like reactive core of `tagl`.
  * The key differences with signals are:
  * - explicit dependency graph
- * - pure derivations and effects: setting `Atom` inside `Atom` or `Effect` is explicitly forbidden, Atom.derive instead.
+ * - pure derivations and effects: setting `Atom` inside `Atom` or `Effect` is explicitly forbidden.
  * - manual cleanup
  *
- * Algorithm is inspired by @modderme's article on his signal-library `reactively`.
+ * Algorithm is inspired heavily by @modderme's signal-library `reactively`.
  * @article https://github.com/modderme123/reactively
  * @article https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph
  */
@@ -89,10 +89,11 @@ export class Atom<T = any, const TDeps extends Atom[] = any> {
 
   private _resolvedDependencies = []
   resolve() {
+    const shouldUpdate = this.fn && this.flag === 'update'
     this.flag = 'clean'
-    if (!this.fn) return
+    if (!shouldUpdate) return
     CURRENT = this
-    this.value = this.fn(
+    this.value = this.fn!(
       returnValues(this.dependencies, this._resolvedDependencies) as DepReturnValues<TDeps>,
       this.value
     )

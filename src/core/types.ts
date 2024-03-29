@@ -80,7 +80,9 @@ type SetterControl = {
   preventRender: () => void
   preventNotification: () => void
 }
-export type Setter<T = Float32Array> = (value: T | ((value: T, control: SetterControl) => T)) => void
+export type Setter<T = Float32Array> = (
+  value: T | ((value: T, control: SetterControl) => T)
+) => void
 export type GLProgramMemory = {
   buffers: BufferRegistry
   attributes: Map<string, WebGLBuffer>

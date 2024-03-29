@@ -1,10 +1,9 @@
-import { mat4, vec3 } from 'gl-matrix'
+import { mat4 } from 'gl-matrix'
 
-import { Atom, atomize, memo } from '@tagl/core'
+import { Atom } from '@tagl/core'
 import { Scene, Sphere } from '@tagl/world'
 import { orbit } from '@tagl/world/controls'
-import { Fragment, Morph, Show, h } from '@tagl/world/h'
-import { html, on, prop } from '@tagl/world/html'
+import { Morph, Show, h } from '@tagl/world/h'
 
 const canvas = document.createElement('canvas')
 document.body.appendChild(canvas)
@@ -56,55 +55,49 @@ const TETROMINO_SHAPES = {
   ],
 }
 
-const when = new Atom(true)
 const type = new Atom('I')
 
-const Tetromino = (props: {
-  type: keyof typeof TETROMINO_SHAPES | Atom<keyof typeof TETROMINO_SHAPES>
-}) => (
+const unwrap = (input: any | Atom<any[]>): any => {
+  const result = input instanceof Atom ? input.get() : input
+  return Array.isArray(result) ? result.map((v) => (v instanceof Atom ? unwrap(v) : v)) : result
+}
+
+const from = new Atom(
+  [type],
+  ([type]) => TETROMINO_SHAPES[type as unknown as keyof typeof TETROMINO_SHAPES]
+)
+
+;(
   <Morph
-    from={memo([atomize(props.type)], ([type]) => TETROMINO_SHAPES[type])}
+    from={from}
     to={(column, x) => (
       <Morph
         from={column}
-        to={(value, y) => (
-          <Sphere
-            color={vec3.fromValues(0, 1, 0)}
-            matrix={mat4.fromTranslation(mat4.create(), [-x / 10, y / 10, 0])}
-            radius={0.5}
-            segments={6}
-            rings={6}
-            mode="TRIANGLES"
-          />
+        to={(when, y) => (
+          <Show when={when}>
+            <Sphere
+              visible={true}
+              radius={0.1}
+              matrix={mat4.fromTranslation(mat4.create(), [y / 30, x / 30, 0])}
+            />
+          </Show>
         )}
       />
     )}
   />
-)
-
-;(
-  <Show when={when}>
-    <Tetromino type={type} />
-  </Show>
 ).bind(scene)
 
-const text = memo([when], ([when]) => (when ? 'hide' : 'show'))
-
-const className = new Atom('red')
-setInterval(() => className.set((className) => (className === 'red' ? 'blue' : 'red')), 1000)
-
-document.body.appendChild(html`
-  <div style="position: absolute; z-index:1; top: 0px; left: 0px;">
-    <button ${on.click(() => when.set((when) => !when))}>${text}</button>
-    <select
-      ${prop.class!(className)}
-      ${on.change((event) => {
-        type.set(event.currentTarget.value as keyof typeof TETROMINO_SHAPES)
-      })}
-    >
-      ${Object.keys(TETROMINO_SHAPES)
-        .map((char) => `<option>${char}</option>`)
-        .join('\n')}
-    </select>
-  </div>
-`)
+document.body.appendChild(
+  (
+    <div style="position: absolute; z-index:1; top: 0px; left: 0px; padding: 5px; display: flex; gap: 5px;">
+      <label>tetromino:</label>
+      <select
+        onChange={(event) => type.set(event.currentTarget!.value as keyof typeof TETROMINO_SHAPES)}
+      >
+        {Object.keys(TETROMINO_SHAPES).map((char) => (
+          <option>{char}</option>
+        ))}
+      </select>
+    </div>
+  ) as unknown as HTMLDivElement
+)

@@ -16,7 +16,10 @@ export type AttributeOptions = BufferOptions & {
   instanceCount?: number
 }
 
-type AttributeFactory = <T extends TypedArray>(value: T | WrapWithAtom<T>, options?: AttributeOptions) => Attribute<T>
+type AttributeFactory = <T extends TypedArray>(
+  value: T | WrapWithAtom<T>,
+  options?: AttributeOptions
+) => Attribute<T>
 
 // prettier-ignore
 export type Attributes = {
@@ -56,10 +59,10 @@ export class Attribute<T extends BufferSource> extends Token<T> {
    */
 
   __: {
-    bind: (program: Program, location: number) => Attribute<T>
+    // bind: (program: Program, location: number) => Attribute<T>
     getLocation: (program: Program, name: string) => number
-    notify: () => void
-    requestRender: () => void
+    // notify: () => void
+    // requestRender: () => void
     template: (name: string) => string | undefined
     update: (program: Program, location: number) => void
   }
@@ -73,25 +76,18 @@ export class Attribute<T extends BufferSource> extends Token<T> {
   constructor(value: T, type: keyof Attributes) {
     super(value)
     const size = dataTypeToSize(type)
+
     this.__ = {
-      requestRender: this.atom.__.requestRender,
-      notify: this.atom.__.notify,
-      bind: (program, location) => {
-        this.atom.__.bind(program, () => {
-          program.virtualProgram.dirtyAttribute(location as number)
-        })
-        return this
-      },
       update: ({ virtualProgram, gl }, location) => {
-        const buffer = virtualProgram.registerBuffer(this.atom.get(), {
+        const buffer = virtualProgram.registerBuffer(this.get(), {
           usage: 'STATIC_DRAW',
           target: 'ARRAY_BUFFER',
         })
 
-        if (buffer.dirty || !virtualProgram.checkAttribute(location as number, this.get)) {
+        if (buffer.dirty || !virtualProgram.checkAttribute(location as number, this.get())) {
           gl.ctx.bindBuffer(gl.ctx.ARRAY_BUFFER, buffer.value)
           if (buffer.dirty) {
-            gl.ctx.bufferData(gl.ctx.ARRAY_BUFFER, this.atom.get(), gl.ctx.STATIC_DRAW)
+            gl.ctx.bufferData(gl.ctx.ARRAY_BUFFER, this.get(), gl.ctx.STATIC_DRAW)
             buffer.dirty = false
           }
         } else {

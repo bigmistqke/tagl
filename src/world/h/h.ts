@@ -1,23 +1,44 @@
-import { Atom } from '@tagl/core'
+import { Atom, Effect } from '@tagl/core'
 import { Node3D } from '..'
+import { Fragment } from './fragment'
+
+type Events = Record<`on${string}`, Event>
+type Attributes = Record<string, any>
+
+const createHTMLElement = (type: string, props: Events & Attributes) => {
+  const element = document.createElement(type)
+  for (const type in props) {
+    if (type.slice(0, 2) === 'on') {
+      element.addEventListener(type.slice(2).toLowerCase(), props[type])
+    } else {
+      if (props[type] instanceof Atom) {
+        new Effect([props[type]!], ([value]) => element.setAttribute(type, value))
+      } else {
+        element.setAttribute(type, props[type])
+      }
+    }
+  }
+  return element
+}
 
 export const h = <
-  T extends (new (...args: any[]) => Node3D) | ((...args: any[]) => Node3D),
-  const TChildren extends (Node3D | Atom<Node3D | undefined>)[]
+  T extends (new (...args: any[]) => Node3D) | ((...args: any[]) => Node3D | string) | string,
+  const TChildren extends (Node3D | string | HTMLElement | Atom<Node3D | undefined>)[]
 >(
   Constructor: T,
-  props: T extends new (...args: any[]) => Node3D ? ConstructorParameters<T>[0] : Parameters<T>[0],
+  props: T extends new (...args: any[]) => Node3D
+    ? ConstructorParameters<T>[0]
+    : T extends (...args: any[]) => Node3D
+    ? Parameters<T>[0]
+    : Record<string, any>,
   ...children: TChildren
 ): T extends new (...args: any[]) => any ? InstanceType<T> : ReturnType<T> => {
   let shape: any
 
   if (typeof Constructor === 'function') {
-    // Directly checking if Constructor is a subclass of Node3D might not be straightforward,
-    // so we differentiate based on expected input: class vs. function.
-    // Since you know functional components don't directly extend Node3D, you can use this assumption.
-
-    // Assuming Node3D is available in this scope. Adjust as necessary.
-    if (Constructor.prototype instanceof Node3D || Constructor === Node3D) {
+    if (Constructor.prototype instanceof Fragment || Constructor === Fragment) {
+      return children
+    } else if (Constructor.prototype instanceof Node3D || Constructor === Node3D) {
       // Handle as class constructor
       shape = new (Constructor as typeof Node3D)(props) as InstanceType<T>
     } else {
@@ -25,13 +46,39 @@ export const h = <
       shape = (Constructor as (props: {}) => Node3D)(props) as ReturnType<T>
     }
   } else {
-    throw new Error('Constructor must be a class or function')
+    shape = createHTMLElement(Constructor, props)
+  }
+
+  if (shape instanceof HTMLElement) {
+    children.forEach((child) => {
+      if (child instanceof HTMLElement) {
+        shape.appendChild(child)
+      } else if (Array.isArray(child)) {
+        child.forEach((child) => {
+          const fragment = document.createDocumentFragment()
+          fragment.append(child)
+          shape.appendChild(fragment)
+        })
+      } else if (child instanceof Atom) {
+        const textNode = document.createTextNode(child.get())
+        shape.appendChild(textNode)
+
+        new Effect([child], (value) => {
+          textNode.textContent = value
+        })
+      } else if (typeof child === 'string') {
+        const textNode = document.createTextNode(child)
+        shape.appendChild(textNode)
+      }
+    })
+
+    return shape
   }
 
   children.forEach((child) => {
     if (child instanceof Atom) {
       let previous = child.get()?.bind(shape)
-      child.subscribe((child) => {
+      new Effect([child], ([child]) => {
         if (previous !== child) {
           if (previous) {
             previous.unbind()

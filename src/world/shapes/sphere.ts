@@ -1,4 +1,4 @@
-import { Atom, atomize, effect } from '@tagl/core/atom'
+import { Atom, atomize, Effect } from '@tagl/core'
 
 import { Shape, ShapeOptions } from '../primitives/shape'
 
@@ -9,9 +9,9 @@ export class Sphere extends Shape {
 
   constructor(
     options: Omit<ShapeOptions, 'vertices' | 'indices' | 'uv'> & {
-      radius: number | Atom<number>
-      segments: number | Atom<number>
-      rings: number | Atom<number>
+      radius?: number | Atom<number>
+      segments?: number | Atom<number>
+      rings?: number | Atom<number>
     }
   ) {
     const vertices = new Atom(new Float32Array())
@@ -25,13 +25,16 @@ export class Sphere extends Shape {
       matrix: options.matrix,
       color: options.color,
       mode: options.mode,
+      visible: options.visible,
     })
 
-    this.radius = atomize(options.radius)
-    this.segments = atomize(options.segments)
-    this.rings = atomize(options.rings)
+    this.radius = atomize(options.radius || 1)
+    this.segments = atomize(options.segments || 6)
+    this.rings = atomize(options.rings || 6)
 
-    effect([this.radius, this.segments], this.update.bind(this))
+    new Effect([this.radius, this.segments], () => {
+      this.update()
+    })
   }
 
   update() {
@@ -96,7 +99,7 @@ export class Sphere extends Shape {
       indices.push(bottomPoleIndex, baseIndexForBottomCap + x, baseIndexForBottomCap + x + 1)
     }
 
-    this.vertices.set(new Float32Array(vertices))
     this.indices!.set(new Uint16Array(indices))
+    this.vertices.set(new Float32Array(vertices))
   }
 }

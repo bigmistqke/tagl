@@ -1,13 +1,13 @@
 import { mat4, vec4 } from 'gl-matrix'
 
-import { subscribe } from '@tagl/core'
+import { Effect } from '@tagl/core'
 import { Scene } from '@tagl/world'
 
 export class Frustum {
   planes: vec4[] = null!
 
   constructor(scene: Scene) {
-    subscribe([scene.camera, scene.perspective], ([camera, perspective]) => {
+    new Effect([scene.camera, scene.perspective], ([camera, perspective]) => {
       this.planes = this.computeFrustumPlanes(camera, perspective)
     })
   }

@@ -1,7 +1,6 @@
 import { vec3 } from 'gl-matrix'
 
-import { effect } from '@tagl/core'
-import { Atom } from '@tagl/core/atom'
+import { Atom, Effect } from '@tagl/core'
 
 import { Shape, ShapeOptions } from '../primitives/shape'
 
@@ -30,7 +29,7 @@ export class Disc extends Shape {
     })
     this.radius = new Atom(options.radius)
     this.segments = new Atom(options.segments)
-    effect([this.radius, this.segments], this.updateWorldMatrix.bind(this))
+    new Effect([this.radius, this.segments], this.updateWorldMatrix.bind(this))
   }
 
   updateWorldMatrix() {

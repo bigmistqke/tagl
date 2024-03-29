@@ -85,10 +85,7 @@ export type ValidUniformAtoms = WrapWithAtom<ValidUniformValues>
 
 export class Uniform<T extends ValidUniformValues | ValidUniformAtoms> extends Token<T> {
   __: {
-    bind: (program: Program, location: WebGLUniformLocation) => Uniform<T>
     getLocation: (program: Program, name: string) => WebGLUniformLocation
-    notify: () => void
-    requestRender: () => void
     template: (name: string) => string | undefined
     update: (program: Program, location: WebGLUniformLocation) => void
   }
@@ -99,24 +96,14 @@ export class Uniform<T extends ValidUniformValues | ValidUniformAtoms> extends T
     const functionName = uniformDataTypeToFunctionName(type)
 
     this.__ = {
-      requestRender: this.atom.__.requestRender,
-      notify: this.atom.__.notify,
-      bind: (program, location) => {
-        const uniform = program.virtualProgram.registerUniform(location, this.get)
-        this.atom.__.bind(program, () => {
-          if (uniform.dirty) return false
-          uniform.dirty = true
-        })
-        return this
-      },
       template: (name: string) => `uniform ${type} ${name};`,
       getLocation: (program, name) => program.gl.ctx.getUniformLocation(program.glProgram, name)!,
       update: (program, location) => {
-        const uniform = program.virtualProgram.registerUniform(location, this.get)
+        const uniform = program.virtualProgram.registerUniform(location, this.get.bind(this))
 
-        if (uniform.value === this.get() && !uniform.dirty) {
-          return
-        }
+        // if (uniform.value === this.get() && !uniform.dirty) {
+        //   return
+        // }
 
         uniform.dirty = false
         uniform.value = this.get()
@@ -155,6 +142,6 @@ export class Uniform<T extends ValidUniformValues | ValidUniformAtoms> extends T
  * */
 export const uniform = new Proxy({} as Uniforms, {
   get(target, type: keyof Uniforms) {
-    return (...[value, options]: UniformParameters) => new Uniform(value, type)
+    return (...[value]: UniformParameters) => new Uniform(value, type)
   },
 })

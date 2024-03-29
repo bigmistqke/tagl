@@ -1,7 +1,6 @@
+import { Atom, Effect } from '@tagl/core'
 import earcut from 'earcut'
 import opentype from 'opentype.js'
-import { atom } from '../../core'
-import { Atom } from '../../core/atom'
 import { Shape, ShapeOptions } from '../index'
 import { vector2ArrayToVector3Array } from '../internal-utils'
 import { commandsToEarcutFormats } from './utils'
@@ -42,7 +41,7 @@ export class Character extends Shape {
   value: Atom<string>
 
   constructor(private options: CharacterOptions) {
-    const value = atom(options.value)
+    const value = new Atom(options.value)
 
     super({
       ...characterToData(options.font, value.get(), options.flattness || 1),
@@ -52,14 +51,12 @@ export class Character extends Shape {
 
     this.value = value
 
-    const updateShape = () => {
+    new Effect([this.value], () => {
       const data = this.characterToData()
       this.vertices.set(data.vertices)
       this.uv.set(data.uv)
       this.indices?.set(data.indices)
-    }
-
-    this.value.subscribe(updateShape)
+    })
   }
 
   characterToData() {

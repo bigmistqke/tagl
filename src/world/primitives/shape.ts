@@ -1,8 +1,10 @@
-import { vec3 } from 'gl-matrix'
+import { mat4, vec3 } from 'gl-matrix'
 
 import {
   Atom,
   Attribute,
+  Buffer,
+  Effect,
   Program,
   ShaderToken,
   Token,
@@ -30,13 +32,14 @@ type ShapeOptionsShader =
     }) => ShaderToken)
 
 type ShapeOptionsBase = {
-  matrix: Mat4 | Uniform<Mat4> | Atom<Mat4>
-  color: Vec3 | Atom<Vec3>
+  matrix?: Mat4 | Uniform<Mat4> | Atom<Mat4>
+  color?: Vec3 | Atom<Vec3>
   vertices: Float32Array | Attribute<Float32Array> | Atom<Float32Array>
   uv: Float32Array | Attribute<Float32Array> | Atom<Float32Array>
   vertex?: ShapeOptionsShader
   fragment?: ShapeOptionsShader
   mode?: RenderMode | Atom<RenderMode>
+  visible?: any | Atom<any>
 }
 
 type ShapeOptionsCount = ShapeOptionsBase & {
@@ -58,27 +61,33 @@ export class Shape extends Node3D {
   uv: Attribute<Float32Array>
   count: Atom<number> | undefined
   indices: Buffer<Uint16Array> | undefined
-  program: any
+  program: Program | undefined
+  visible: Atom<boolean>
 
   constructor(private shapeOptions: ShapeOptions) {
     const matrix =
-      shapeOptions.matrix instanceof Token ? shapeOptions.matrix : uniform.mat4(shapeOptions.matrix)
+      shapeOptions.matrix instanceof Token
+        ? shapeOptions.matrix
+        : uniform.mat4(shapeOptions.matrix || mat4.create())
 
     super(matrix)
 
-    this.color = uniform.vec3(shapeOptions.color)
+    this.color = uniform.vec3(shapeOptions.color || vec3.fromValues(0, 0, 0))
     this.vertices =
-      shapeOptions.vertices instanceof Token
+      shapeOptions.vertices instanceof Attribute
         ? shapeOptions.vertices
         : attribute.vec3(shapeOptions.vertices)
-    this.uv = shapeOptions.uv instanceof Token ? shapeOptions.uv : attribute.vec2(shapeOptions.uv)
+    this.uv =
+      shapeOptions.uv instanceof Attribute ? shapeOptions.uv : attribute.vec2(shapeOptions.uv)
 
     this.mode = atomize(shapeOptions.mode || 'TRIANGLES')
     this.count = shapeOptions.count !== undefined ? atomize(shapeOptions.count) : undefined
 
+    this.visible = atomize('visible' in shapeOptions ? shapeOptions.visible : true)
+
     this.indices =
       shapeOptions.indices !== undefined
-        ? shapeOptions.indices instanceof Token
+        ? shapeOptions.indices instanceof Buffer
           ? shapeOptions.indices
           : buffer(shapeOptions.indices, {
               target: 'ELEMENT_ARRAY_BUFFER',
@@ -145,6 +154,11 @@ export class Shape extends Node3D {
 
     const program = (this.program = scene.createProgram(programOptions))
 
+    new Effect([this.visible], ([visible]) => {
+      program.visible = visible
+      program.gl.requestRender()
+    })
+
     scene.stack.set((stack) => {
       stack.push(program)
       return stack
@@ -152,15 +166,9 @@ export class Shape extends Node3D {
   }
 
   private _cleanup() {
-    console.log('CLEANUP', this.origin, this)
-    this.origin?.stack.set((stack, flags) => {
+    this.origin?.stack.set((stack) => {
       const index = stack.findIndex((program) => program === this.program)
-      if (index !== -1) {
-        stack.splice(index, 1)
-      } else {
-        flags.preventRender()
-        flags.preventNotification()
-      }
+      stack.splice(index, 1)
       return stack
     })
   }

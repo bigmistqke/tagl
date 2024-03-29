@@ -1,3 +1,3 @@
-import { Node3D } from '../primitives'
-
-export const Fragment = () => new Node3D()
+export class Fragment {
+  constructor(public node: any) {}
+}

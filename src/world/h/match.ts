@@ -1,4 +1,4 @@
-import { Atom, atomize, subscribe } from '@tagl/core'
+import { Atom, Effect, atomize } from '@tagl/core'
 import { Node3D, Scene } from '@tagl/world'
 import { mat4 } from 'gl-matrix'
 import { h } from './h'
@@ -18,7 +18,7 @@ export class Match<T extends Record<string, Node3D>> extends Node3D {
     super(config.matrix)
     this.when = atomize(config.when)
     this.cases = atomize(config.cases)
-    subscribe([this.when, this._parent], ([when, _parent]) => {
+    new Effect([this.when, this._parent], ([when, _parent]) => {
       if (!_parent) return
       if (this.previous) this.previous.unbind()
       const node = this.cases.get()[when]

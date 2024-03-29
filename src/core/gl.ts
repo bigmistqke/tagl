@@ -1,11 +1,10 @@
-import { Atom, atomize } from './atom'
+import { Atom, atomize, Effect } from './atom'
 import { DequeMap } from './data-structures/deque-map'
 import { glsl, type ShaderToken } from './glsl'
-import { Buffer, buffer } from './tokens'
-import { Token } from './tokens/token'
-import { GLLocation, RenderMode } from './types'
-import { ProgramRegistry, glRegistry, type ProgramRecord } from './virtualization/registries'
-import { VirtualProgram, getVirtualProgram } from './virtualization/virtual-program'
+import { buffer, Buffer } from './tokens'
+import { GLLocation, RenderMode, WrapWithAtom } from './types'
+import { glRegistry, ProgramRegistry, type ProgramRecord } from './virtualization/registries'
+import { getVirtualProgram, VirtualProgram } from './virtualization/virtual-program'
 
 /**
  * Represents a WebGL2 rendering and management system.
@@ -18,8 +17,8 @@ export class GL {
 
   private batching = false
   private _onResizeCallbacks: ((canvas: HTMLCanvasElement) => void)[] = []
-  private _onBeforeRenderCallbacks: ((now: number) => void)[] = []
-  private _onLoopCallbacks: ((now: number) => void)[] = []
+  private _onBeforeRenderCallbacks: (() => void)[] = []
+  private _onLoopCallbacks: (() => void)[] = []
 
   /**
    * @param {HTMLCanvasElement} canvas - The HTML canvas element to use for WebGL2 rendering.
@@ -28,7 +27,7 @@ export class GL {
     const ctx = canvas.getContext('webgl2')
     if (!ctx) throw 'could not get context webgl2'
     this.ctx = ctx
-    this.stack.subscribe(this.requestRender.bind(this))
+    new Effect([this.stack], this.requestRender.bind(this))
   }
 
   /**
@@ -99,7 +98,7 @@ export class GL {
    * @param {Function} callback - The callback function to register.
    * @returns {Function} A function that, when called, will unregister the provided callback.
    */
-  onBeforeRender(callback: (now: number) => void): Function {
+  onBeforeRender(callback: () => void): Function {
     this._onBeforeRenderCallbacks.push(callback)
     return () => {
       this._onBeforeRenderCallbacks.splice(this._onBeforeRenderCallbacks.indexOf(callback), -1)
@@ -111,7 +110,7 @@ export class GL {
    * @param {Function} callback - The callback function to register, receiving the current timestamp.
    * @returns {Function} A function that, when called, will unregister the provided callback.
    */
-  onLoop(callback: (now: number) => void): Function {
+  onLoop(callback: () => void): Function {
     this._onLoopCallbacks.push(callback)
 
     if (this._onLoopCallbacks.length === 1) {
@@ -140,7 +139,7 @@ export class GL {
    * @private
    * @param {number} now - The current timestamp provided by `requestAnimationFrame`.
    */
-  private loop(now: number) {
+  private loop() {
     if (this._onLoopCallbacks.length === 0) {
       this.looping = false
       return
@@ -149,10 +148,10 @@ export class GL {
     for (let i = 0; i < this._onLoopCallbacks.length; i++) {
       const node = this._onLoopCallbacks[i]
       if (node) {
-        node(now)
+        node()
       }
     }
-    if (this.isPending) this.render(now)
+    if (this.isPending) this.render()
   }
 
   /**
@@ -172,8 +171,6 @@ export class GL {
     }
 
     const stack = this.stack.get()
-
-    console.log(stack)
 
     for (let i = 0; i < stack.length; i++) {
       const element = stack[i]
@@ -212,7 +209,7 @@ export class Program {
   vertex: ShaderToken
   virtualProgram: VirtualProgram
   visible: boolean
-  mode: Atom<RenderMode>
+  mode: Atom<RenderMode> | WrapWithAtom<RenderMode>
 
   private _glRecord: { value: { program: WebGLProgram | undefined }; dirty: boolean }
   private _indicesBuffer: Buffer<Uint16Array> | undefined
@@ -243,12 +240,16 @@ export class Program {
     this._onBeforeDrawHandlers = []
 
     options.gl.ctx.useProgram(glProgram)
-    options.vertex.bind(this, locations.vertex)
-    options.fragment.bind(this, locations.fragment)
+    const vertexTokens = options.vertex.bind(this, locations.vertex)
+    const fragmentTokens = options.fragment.bind(this, locations.fragment)
+
+    new Effect([...vertexTokens, ...fragmentTokens], () => {
+      this.gl.requestRender()
+    })
 
     if (options.indices) {
-      this._indicesBuffer = (
-        options.indices instanceof Token
+      this._indicesBuffer =
+        options.indices instanceof Buffer
           ? options.indices
           : buffer(
               options.indices instanceof Atom ? options.indices : new Uint16Array(options.indices),
@@ -257,10 +258,14 @@ export class Program {
                 usage: 'STATIC_DRAW',
               }
             )
-      ).__.bind(this)
+      new Effect([this._indicesBuffer], () => {
+        //this.gl.requestRender()
+      })
     } else {
-      if (typeof options.count === 'object') {
-        options.count.__.bind(this)
+      if (options.count instanceof Atom) {
+        new Effect([options.count], () => {
+          this.gl.requestRender()
+        })
       }
     }
   }
@@ -285,6 +290,8 @@ export class Program {
    */
   render() {
     if (!this.visible) return
+
+    // only switch programs if needed
     if (this._glRecord.value.program !== this.glProgram) {
       this.gl.ctx.useProgram(this.glProgram)
       this._glRecord.value.program = this.glProgram

@@ -1,13 +1,14 @@
-import { Atom, subscribe } from '@tagl/core'
+import { Atom, Effect } from '@tagl/core'
 function createTextNode(value: string) {
   return document.createTextNode(value)
 }
 
 function createReactiveTextNode(atom: Atom<string>) {
   const node = document.createTextNode(atom.get())
-  atom.subscribe((newValue: string | null) => {
+  new Effect([atom], ([newValue]) => {
     node.nodeValue = newValue
   })
+
   return node
 }
 
@@ -26,6 +27,7 @@ export function html(
         ? `<span data-dynamic="${i}"></span>`
         : value
 
+    if (dynamicPart === undefined) return acc + str
     return acc + str + dynamicPart
   }, '')
 
@@ -66,7 +68,7 @@ class Prop {
   constructor(public type: string, public value: Atom<any> | any) {}
   bind(element: Element) {
     if (this.value instanceof Atom) {
-      subscribe([this.value], ([value]) => element.setAttribute(this.type, value))
+      new Effect([this.value], ([value]) => element.setAttribute(this.type, value))
     } else {
       element.setAttribute(this.type, this.value)
     }
@@ -77,6 +79,7 @@ type Events = {
   click: (callback: (event: MouseEvent) => void) => Handler
   mousedown: (callback: (event: MouseEvent) => void) => Handler
   change: (callback: (event: Event) => void) => Handler
+  input: (callback: (event: InputEvent) => void) => Handler
 }
 
 export const on = new Proxy({} as Events, {

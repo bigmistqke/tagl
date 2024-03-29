@@ -1,6 +1,6 @@
 import { mat4, vec2, vec3 } from 'gl-matrix'
 
-import { Atom } from '@tagl/core/reactive'
+import { Atom } from '@tagl/core/atom'
 import { Scene } from '@tagl/world'
 
 export const orbit = (

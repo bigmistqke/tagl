@@ -76,6 +76,7 @@ export class Attribute<T extends BufferSource> extends Token<T> {
   constructor(value: T, type: keyof Attributes) {
     super(value)
     const size = dataTypeToSize(type)
+
     this.__ = {
       update: ({ virtualProgram, gl }, location) => {
         const buffer = virtualProgram.registerBuffer(this.get(), {
@@ -83,7 +84,7 @@ export class Attribute<T extends BufferSource> extends Token<T> {
           target: 'ARRAY_BUFFER',
         })
 
-        if (buffer.dirty || !virtualProgram.checkAttribute(location as number, this.get)) {
+        if (buffer.dirty || !virtualProgram.checkAttribute(location as number, this.get())) {
           gl.ctx.bindBuffer(gl.ctx.ARRAY_BUFFER, buffer.value)
           if (buffer.dirty) {
             gl.ctx.bufferData(gl.ctx.ARRAY_BUFFER, this.get(), gl.ctx.STATIC_DRAW)

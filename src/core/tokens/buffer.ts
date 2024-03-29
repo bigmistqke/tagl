@@ -1,5 +1,5 @@
 import { Program } from '..'
-import { Atom } from '../reactive'
+import { Atom } from '../atom'
 import { Token } from './token'
 
 /**********************************************************************************/

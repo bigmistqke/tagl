@@ -1,6 +1,6 @@
 import { mat2, mat3, mat4, vec2, vec3, vec4 } from 'gl-matrix'
+import { Atom } from '../atom'
 import { Program } from '../gl'
-import { Atom } from '../reactive'
 import {
   DataType,
   Format,

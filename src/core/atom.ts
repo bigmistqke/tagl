@@ -44,7 +44,7 @@ type Computation<TValue, TDeps extends Atom[]> = (
 /*                                                                                */
 /**********************************************************************************/
 
-export class Atom<T = any, const TDeps extends Atom[] = any[]> {
+export class Atom<T = any, const TDeps extends Atom[] = any> {
   flag: 'clean' | 'dirty' | 'update' = 'clean'
   observers: (Atom | Effect<Atom[]>)[] = []
   value: T

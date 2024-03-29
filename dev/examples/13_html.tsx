@@ -3,7 +3,7 @@ import { mat4, vec3 } from 'gl-matrix'
 import { Atom, atomize } from '@tagl/core'
 import { Scene, Sphere } from '@tagl/world'
 import { orbit } from '@tagl/world/controls'
-import { Fragment, Match, Morph, Show, h } from '@tagl/world/h'
+import { Fragment, Morph, h } from '@tagl/world/h'
 import { html, on, prop } from '@tagl/world/html'
 
 const canvas = document.createElement('canvas')
@@ -18,102 +18,56 @@ orbit(scene, { near: 0.1, initialRadius: 0.2 })
 
 // @prettier-ignore
 const TETROMINO_SHAPES = {
-  I: [
-    [0, 0, 0, 0],
-    [1, 1, 1, 1],
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
-  ],
-  O: [
-    [1, 1],
-    [1, 1],
-  ],
-  T: [
-    [0, 1, 0],
-    [1, 1, 1],
-    [0, 0, 0],
-  ],
-  S: [
-    [0, 1, 1],
-    [1, 1, 0],
-    [0, 0, 0],
-  ],
-  Z: [
-    [1, 1, 0],
-    [0, 1, 1],
-    [0, 0, 0],
-  ],
-
-  J: [
-    [0, 1, 0],
-    [0, 1, 0],
-    [1, 1, 0],
-  ],
-  L: [
-    [0, 1, 0],
-    [0, 1, 0],
-    [0, 1, 1],
-  ],
+  T: [0, 1, 0],
+  S: [0, 1, 1],
+  Z: [1, 1, 0],
 }
 
 const when = new Atom(true)
 const type = new Atom('I')
+const text = new Atom([when], ([when]) => (when ? 'hide' : 'show'))
+const segments = new Atom(7)
+const className = new Atom('red')
 
 const Tetromino = (props: {
   type: keyof typeof TETROMINO_SHAPES | Atom<keyof typeof TETROMINO_SHAPES>
-}) => (
-  <Morph
-    from={new Atom([atomize(props.type)], ([type]) => TETROMINO_SHAPES[type])}
-    to={(column, x) => (
-      <Morph
-        from={column}
-        to={(value, y) => (
-          <Show when={value}>
-            <Sphere
-              color={vec3.fromValues(0, 1, 0)}
-              matrix={mat4.fromTranslation(mat4.create(), [y / 10, -x / 10, 0])}
-              radius={0.5}
-              segments={6}
-              rings={6}
-              mode="TRIANGLES"
-            />
-          </Show>
-        )}
-      />
-    )}
-  />
-)
-
-;(
-  <Show when={when}>
-    <Match
-      when={type}
-      cases={{
-        I: <Tetromino type="I" />,
-        O: <Tetromino type="O" />,
-        T: <Tetromino type="T" />,
-        S: <Tetromino type="S" />,
-        Z: <Tetromino type="Z" />,
-        L: <Tetromino type="L" />,
-        J: <Tetromino type="J" />,
-      }}
+}) => {
+  const shape = new Atom([atomize(props.type)], ([type]) => TETROMINO_SHAPES[type])
+  return (
+    <Morph
+      from={shape}
+      to={(column, x) => (
+        <Sphere
+          color={vec3.fromValues(0, 1, 0)}
+          matrix={mat4.fromTranslation(mat4.create(), [0 / 10, -x / 10, 0])}
+          radius={0.5}
+          segments={segments}
+          rings={segments}
+          mode="TRIANGLES"
+        />
+      )}
     />
-  </Show>
-).bind(scene)
+  )
+}
 
-const text = new Atom([when], ([when]) => (when ? 'hide' : 'show'))
+;(<Tetromino type={type} />).bind(scene)
 
-const className = new Atom('red')
-// setInterval(() => className.set((className) => (className === 'red' ? 'blue' : 'red')), 1000)
-
+// prettier-ignore
 document.body.appendChild(html`
   <div style="position: absolute; z-index:1; top: 0px; left: 0px;">
-    <button ${on.click(() => when.set((when) => !when))}>${text}</button>
+    <button ${
+      on.click(() => when.set((when) => !when))
+    }>${
+      text
+    }</button>
+    <input 
+      type="number" 
+      ${prop.value!(segments)} 
+      ${on.input((e) => segments.set(+e.currentTarget?.value))}
+    />
     <select
       ${prop.class!(className)}
-      ${on.change((event) => {
-        type.set(event.currentTarget!.value as keyof typeof TETROMINO_SHAPES)
-      })}
+      ${on.change((event) => type.set(event.currentTarget!.value as keyof typeof TETROMINO_SHAPES))}
     >
       ${Object.keys(TETROMINO_SHAPES)
         .map((char) => `<option>${char}</option>`)

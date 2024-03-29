@@ -1,6 +1,6 @@
+import { Atom, atomize, Effect } from './atom'
 import { DequeMap } from './data-structures/deque-map'
 import { glsl, type ShaderToken } from './glsl'
-import { Atom, atomize, Effect } from './reactive'
 import { buffer, Buffer } from './tokens'
 import { GLLocation, RenderMode, WrapWithAtom } from './types'
 import { glRegistry, ProgramRegistry, type ProgramRecord } from './virtualization/registries'
@@ -259,7 +259,7 @@ export class Program {
               }
             )
       new Effect([this._indicesBuffer], () => {
-        this.gl.requestRender()
+        //this.gl.requestRender()
       })
     } else {
       if (options.count instanceof Atom) {

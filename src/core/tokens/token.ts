@@ -1,4 +1,4 @@
-import { Atom } from '../reactive'
+import { Atom } from '../atom'
 
 export class Token<T = any> extends Atom<T> {
   constructor(value: T | Atom<T>) {

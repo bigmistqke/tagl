@@ -79,6 +79,7 @@ type Events = {
   click: (callback: (event: MouseEvent) => void) => Handler
   mousedown: (callback: (event: MouseEvent) => void) => Handler
   change: (callback: (event: Event) => void) => Handler
+  input: (callback: (event: InputEvent) => void) => Handler
 }
 
 export const on = new Proxy({} as Events, {
